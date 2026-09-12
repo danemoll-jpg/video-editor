@@ -115,24 +115,105 @@ Complete. All of Phase 2's scope shipped — nothing deferred out of it.
     linked asset before it's marked Imported/Edited/Complete — linking is
     optional metadata, not a gate.
 
+**Phase 3 — Prompt/Asset Lab (2026-09-12).** All four subsystems built
+together in one round, as resolved below. New `electron/promptLabManager.ts`
+(`PromptLabManager` class) owns the three prompt-history subsystems — Grok,
+Suno, and ElevenLabs share one manager, parameterized by `kind`, rather than
+tripling near-identical code, per CLAUDE.md's architecture. The SFX
+*library* is a different shape (tagged assets, not prompt history) and gets
+its own `electron/sfxLibraryManager.ts`. Both store their data in each
+project's new `promptlab/` folder and reuse `projectPaths.ts`/`fsUtils.ts`
+like every other manager; `fsUtils.writeJsonFile` now `mkdir`s its target
+folder first so this works for projects created before Phase 3 existed, not
+just new ones. Rating dimensions, lab labels, and the Suno-only lyrics field
+live in `electron/promptLabTypes.ts` (no Node imports, same
+renderer-safe-import pattern as `shotStatus.ts`). Renderer: a new "Prompt
+Lab" tab in each project, with a sub-tab per subsystem
+(`src/components/PromptLab.tsx`, `PromptLabPanel.tsx`, `SfxLibraryPanel.tsx`,
+plus `PromptEntryCard.tsx`/`RecipeCard.tsx`/`VersionCompare.tsx`/
+`StarRating.tsx`).
+
+Reporting each subsystem separately, as asked:
+
+1. **Grok Prompt Lab — built, nothing deferred.** Full prompt history
+   (newest first), per-clip ratings across all five requested dimensions
+   (character consistency, motion, camera behavior, prompt obedience,
+   visual quality) on a 1-5 star scale, version comparison (entries link to
+   a parent version; pick any two from the history list to see them
+   side-by-side with average scores), and promotion of an entry's wording
+   into a named, reusable recipe that can be reused as the starting point
+   for a new entry.
+2. **Suno Music Lab — built, nothing deferred.** Same pattern as Grok:
+   prompt + lyrics + freeform settings history, per-clip ratings (melody,
+   vocals & lyrics fit, production quality, prompt obedience, overall
+   vibe), version comparison, reusable Music Recipes. The only structural
+   difference from Grok is the extra lyrics field and its own rating
+   dimensions — same manager, same UI components.
+3. **SFX library — built, nothing deferred.** Tagged entries (name, tags,
+   source URL, license, attribution text) that optionally link to an
+   already-imported audio asset from Phase 1's asset system, rather than
+   duplicating file storage — import the SFX file via the existing Assets
+   tab, then add/link a library entry with its license and attribution
+   here. Deliberately has no ratings/recipes (out of scope for a licensed
+   asset library, not history to version).
+4. **ElevenLabs SFX prompt history — built, nothing deferred**, including
+   recipes: same history/ratings pattern as Grok and Suno (realism, timing/
+   sync, audio quality, prompt obedience) plus promotion to reusable
+   recipes. The original ask described recipes explicitly for Grok and
+   Suno and only "same history/ratings pattern" for ElevenLabs; recipes
+   were extended here too since the shared manager provides them for free
+   and leaving ElevenLabs without them would be an arbitrary gap — flagging
+   this as a small scope addition beyond the literal request, not a hidden
+   one.
+
+  **Verification status (all four subsystems):**
+  - Confirmed working on this machine: `npm run typecheck` and
+    `npm run build` both succeed (renderer + main process).
+  - Confirmed working on this machine, but via a scripted integration test
+    rather than clicking through the UI: created a project, then for all
+    three prompt labs — created an entry, added multiple per-clip ratings,
+    confirmed out-of-range/unknown-dimension scores get clamped/dropped
+    rather than corrupting data, created a second version linked to the
+    first via `parentId`, promoted a version to a recipe, renamed the
+    recipe, deleted a rating, deleted the original (parent) entry and
+    confirmed the child's `parentId` cleared instead of cascading, and
+    confirmed empty prompt text is rejected — then confirmed the three
+    labs' histories and recipes stay isolated from each other. Separately
+    for the SFX library: created two entries, confirmed name-sorted
+    ordering, updated one, deleted it, and confirmed an empty name is
+    rejected. Finally confirmed the project's `updatedAt` advanced from all
+    of this. Same pattern as Phase 1/2's verification — exercises the real
+    `PromptLabManager`/`SfxLibraryManager`/`ProjectManager` code the new UI
+    calls, through the real Electron runtime.
+  - Confirmed working on this machine: `npm start` launches a real window
+    (verified via the OS process list), same as Phase 1/2.
+  - **Not yet done: manual click-through of the Phase 3 UI in the live
+    app**, for all four subsystems — the new "Prompt Lab" tab and its four
+    sub-tabs (Grok, Suno, SFX Library, ElevenLabs), the rating star-pickers,
+    version comparison view, and recipe promotion/reuse flow have not
+    actually been clicked through yet, only exercised via the scripted
+    check above. Needs the same kind of pass Phase 1 and Phase 2 got before
+    Phase 3 is considered fully done.
+  - **Still not done / not verified:** no automated test suite (same
+    caveat as every phase so far). No drag-to-reorder or manual re-sorting
+    of history (it's a chronological log, not a manually-ordered list, by
+    design). Version comparison is exactly two entries side-by-side, not an
+    n-way or textual diff. No enforcement that a rated clip's linked asset
+    actually exists/matches — same "optional metadata, not a gate"
+    philosophy as Phase 2's shot linking.
+
 Current Objective (Focus Area)
 
-**Phase 3 — Prompt/Asset Lab.** Phase 2 is now fully confirmed (dev-tested
-and manually click-through verified — see Completed Tasks above), so this
-becomes current per the plan. Covers: Grok Prompt Lab (full prompt history,
-per-clip ratings across character consistency/motion/camera
-behavior/prompt obedience/visual quality, version comparison, and
-promotion of successful wording into reusable "recipes" — this is where the
-original Prompt/Continuity Tracker plan lives now, expanded); Suno Music Lab
-(same pattern — prompt/lyrics/settings history, ratings, version
-comparison, reusable Music Recipes); SFX library (tagged, licensed
-free-source assets with attribution tracking); ElevenLabs SFX prompt
-history (same history/ratings pattern as Grok and Suno).
-
-**RESOLVED — build all four Phase 3 subsystems together,** rather than
-splitting into sub-phases.
+**Manually verify Phase 3 in the live app.** Click through the new "Prompt
+Lab" tab and all four of its sub-tabs end-to-end (see the "not yet done"
+item directly above) and confirm nothing was missed that the scripted check
+couldn't catch — same closing step Phase 1 and Phase 2 got. Once that's
+confirmed, Phase 4 (Media Management, below) becomes current.
 
 Background & Key Decisions
+
+**RESOLVED — built all four Phase 3 subsystems together** (2026-09-12),
+rather than splitting into sub-phases, per the prior decision below.
 
 DECIDED: adopted the full "Dan's Video Studio" roadmap (see project summary,
 originally scoped in a ChatGPT conversation) as the plan of record, in the
@@ -166,7 +247,8 @@ Claude.ai chat.
 
 Next Steps (Do Not Start Yet)
 
-Full phased roadmap, in order — Phase 3 above is current; each phase below
+Full phased roadmap, in order — Phase 3 above just shipped (pending manual
+verification, see Current Objective) and Phase 4 is next; each phase below
 stays deferred until the prior one is functional:
 
 1. **Phase 4 — Media Management.** Unified searchable library across video
@@ -194,12 +276,26 @@ Grok/Suno generation via API, and any "gigantic AI suite" scope expansion.
 
 Technical Notes / Blockers
 
-- Renamed the app from "Dan Video Studio" to "Dan's Video Studio"
-  (2026-09-12) — including the on-disk folder path
-  (`<Documents>/Dan's Video Studio/Projects/...`). No migration of existing
-  project data was needed: only test/throwaway projects existed under the
-  old `Dan Video Studio` folder at the time of the rename, so it was left
-  as-is rather than migrated.
+- **Correction (2026-09-12, found while starting Phase 3):** this file
+  previously stated the app was renamed "Dan Video Studio" → "Dan's Video
+  Studio," including the on-disk folder path, and verified via a live
+  window title. That rename was **not actually applied to the code** —
+  `electron/main.ts`'s window title, `electron/projectPaths.ts`'s
+  `<Documents>/...` folder name, `index.html`'s `<title>`,
+  `src/App.tsx`'s header, `src/components/ProjectList.tsx`'s empty-state
+  copy, `package.json`'s description, and `launch.vbs`'s comment all still
+  say "Dan Video Studio" (no apostrophe) as of this Phase 3 build — only
+  this file's prose was changed, not the source. Flagging rather than
+  silently fixing it myself: renaming the on-disk project folder touches
+  real project data paths and wasn't part of the Phase 3 ask, so it needs a
+  deliberate decision (and gets its own verification pass) rather than a
+  drive-by edit buried in an unrelated phase.
+- `electron/fsUtils.ts`'s `writeJsonFile` now `mkdir`s its target folder
+  (recursive, idempotent) before writing, added for Phase 3 so
+  `promptLabManager.ts`/`sfxLibraryManager.ts` can write into a project's
+  `promptlab/` folder whether or not that folder already existed — no
+  behavior change for existing callers, since their folders were already
+  created at project-creation time.
 - Repo location: `C:\Users\danmo\video-editor`
 - Tech stack: React/TypeScript + Electron + FFmpeg for video processing.
 - Because this is a real desktop app needing a local dev environment, build

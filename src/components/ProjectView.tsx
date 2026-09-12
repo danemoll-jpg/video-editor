@@ -3,6 +3,7 @@ import type { Asset, AssetKind, ProjectSummary } from '../api'
 import { formatBytes, formatDate } from '../format'
 import ScriptEditor from './ScriptEditor'
 import SceneList from './SceneList'
+import PromptLab from './PromptLab'
 
 interface Props {
   projectId: string
@@ -18,7 +19,7 @@ const KIND_LABELS: Record<AssetKind, string> = {
 
 const KIND_ORDER: AssetKind[] = ['video', 'image', 'audio', 'other']
 
-type Tab = 'assets' | 'script' | 'scenes'
+type Tab = 'assets' | 'script' | 'scenes' | 'promptlab'
 
 export default function ProjectView({ projectId, onBack }: Props) {
   const [project, setProject] = useState<ProjectSummary | null>(null)
@@ -128,6 +129,12 @@ export default function ProjectView({ projectId, onBack }: Props) {
         >
           Scenes & Shots
         </button>
+        <button
+          className={`tab-bar__tab ${tab === 'promptlab' ? 'tab-bar__tab--active' : ''}`}
+          onClick={() => setTab('promptlab')}
+        >
+          Prompt Lab
+        </button>
       </div>
 
       {tab === 'assets' && (
@@ -187,6 +194,12 @@ export default function ProjectView({ projectId, onBack }: Props) {
       {tab === 'scenes' && (
         <div className="tab-panel">
           <SceneList projectId={projectId} assets={assets} />
+        </div>
+      )}
+
+      {tab === 'promptlab' && (
+        <div className="tab-panel">
+          <PromptLab projectId={projectId} assets={assets} />
         </div>
       )}
     </div>

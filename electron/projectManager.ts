@@ -24,6 +24,8 @@ import {
 //     assets/
 //       video/  image/  audio/  other/
 //     script/            script/scenes/shots — see productionManager.ts
+//     promptlab/         Grok/Suno/ElevenLabs prompt labs + SFX library —
+//                         see promptLabManager.ts and sfxLibraryManager.ts
 //     exports/           placeholder for Phase 6 (export tools)
 //
 // Imported files are copied in under a generated id-based filename
@@ -119,6 +121,7 @@ export class ProjectManager {
     }
     await fs.mkdir(path.join(dir, 'script'), { recursive: true })
     await fs.mkdir(path.join(dir, 'exports'), { recursive: true })
+    await fs.mkdir(path.join(dir, 'promptlab'), { recursive: true })
 
     const now = new Date().toISOString()
     const meta: ProjectMeta = { id, name: trimmed, createdAt: now, updatedAt: now }

@@ -2,13 +2,18 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import path from 'node:path'
 import { ProjectManager } from './projectManager'
 import { ProductionManager } from './productionManager'
+import { PromptLabManager, type PromptEntryInput, type PromptEntryUpdates, type RatingInput, type RatingUpdates } from './promptLabManager'
+import { SfxLibraryManager, type SfxLibraryEntryInput, type SfxLibraryEntryUpdates } from './sfxLibraryManager'
 import type { ShotStatus } from './shotStatus'
+import type { PromptLabKind } from './promptLabTypes'
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL
 
 let mainWindow: BrowserWindow | null = null
 const projectManager = new ProjectManager()
 const productionManager = new ProductionManager()
+const promptLabManager = new PromptLabManager()
+const sfxLibraryManager = new SfxLibraryManager()
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -138,4 +143,83 @@ ipcMain.handle('shots:delete', (_e, projectId: string, shotId: string) =>
 
 ipcMain.handle('shots:move', (_e, projectId: string, shotId: string, direction: 'up' | 'down') =>
   productionManager.moveShot(projectId, shotId, direction),
+)
+
+// --- IPC: prompt labs (Grok / Suno / ElevenLabs) ---------------------------
+
+ipcMain.handle('promptlab:list', (_e, projectId: string, kind: PromptLabKind) =>
+  promptLabManager.listEntries(projectId, kind),
+)
+
+ipcMain.handle('promptlab:create', (_e, projectId: string, kind: PromptLabKind, input: PromptEntryInput) =>
+  promptLabManager.createEntry(projectId, kind, input),
+)
+
+ipcMain.handle(
+  'promptlab:update',
+  (_e, projectId: string, kind: PromptLabKind, entryId: string, updates: PromptEntryUpdates) =>
+    promptLabManager.updateEntry(projectId, kind, entryId, updates),
+)
+
+ipcMain.handle('promptlab:delete', (_e, projectId: string, kind: PromptLabKind, entryId: string) =>
+  promptLabManager.deleteEntry(projectId, kind, entryId),
+)
+
+ipcMain.handle(
+  'promptlab:rating:add',
+  (_e, projectId: string, kind: PromptLabKind, entryId: string, input: RatingInput) =>
+    promptLabManager.addRating(projectId, kind, entryId, input),
+)
+
+ipcMain.handle(
+  'promptlab:rating:update',
+  (_e, projectId: string, kind: PromptLabKind, entryId: string, ratingId: string, updates: RatingUpdates) =>
+    promptLabManager.updateRating(projectId, kind, entryId, ratingId, updates),
+)
+
+ipcMain.handle(
+  'promptlab:rating:delete',
+  (_e, projectId: string, kind: PromptLabKind, entryId: string, ratingId: string) =>
+    promptLabManager.deleteRating(projectId, kind, entryId, ratingId),
+)
+
+ipcMain.handle('promptlab:recipe:list', (_e, projectId: string, kind: PromptLabKind) =>
+  promptLabManager.listRecipes(projectId, kind),
+)
+
+ipcMain.handle(
+  'promptlab:recipe:promote',
+  (_e, projectId: string, kind: PromptLabKind, entryId: string, name: string) =>
+    promptLabManager.promoteToRecipe(projectId, kind, entryId, name),
+)
+
+ipcMain.handle(
+  'promptlab:recipe:update',
+  (
+    _e,
+    projectId: string,
+    kind: PromptLabKind,
+    recipeId: string,
+    updates: { name?: string; promptText?: string; lyrics?: string; settings?: string; notes?: string; tags?: string[] },
+  ) => promptLabManager.updateRecipe(projectId, kind, recipeId, updates),
+)
+
+ipcMain.handle('promptlab:recipe:delete', (_e, projectId: string, kind: PromptLabKind, recipeId: string) =>
+  promptLabManager.deleteRecipe(projectId, kind, recipeId),
+)
+
+// --- IPC: SFX library -------------------------------------------------------
+
+ipcMain.handle('sfx:list', (_e, projectId: string) => sfxLibraryManager.listEntries(projectId))
+
+ipcMain.handle('sfx:create', (_e, projectId: string, input: SfxLibraryEntryInput) =>
+  sfxLibraryManager.createEntry(projectId, input),
+)
+
+ipcMain.handle('sfx:update', (_e, projectId: string, sfxId: string, updates: SfxLibraryEntryUpdates) =>
+  sfxLibraryManager.updateEntry(projectId, sfxId, updates),
+)
+
+ipcMain.handle('sfx:delete', (_e, projectId: string, sfxId: string) =>
+  sfxLibraryManager.deleteEntry(projectId, sfxId),
 )
