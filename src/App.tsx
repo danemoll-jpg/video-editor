@@ -9,7 +9,7 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <h1>Dan Video Studio</h1>
-        <span className="app-header__phase">Phase 1 — foundation</span>
+        <span className="app-header__phase">Phase 2 — production planning</span>
       </header>
 
       <main className="app-main">

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { Asset, AssetKind, ProjectSummary } from '../api'
 import { formatBytes, formatDate } from '../format'
+import ScriptEditor from './ScriptEditor'
+import SceneList from './SceneList'
 
 interface Props {
   projectId: string
@@ -16,12 +18,15 @@ const KIND_LABELS: Record<AssetKind, string> = {
 
 const KIND_ORDER: AssetKind[] = ['video', 'image', 'audio', 'other']
 
+type Tab = 'assets' | 'script' | 'scenes'
+
 export default function ProjectView({ projectId, onBack }: Props) {
   const [project, setProject] = useState<ProjectSummary | null>(null)
   const [assets, setAssets] = useState<Asset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  const [tab, setTab] = useState<Tab>('assets')
 
   async function refresh() {
     setLoading(true)
@@ -93,9 +98,6 @@ export default function ProjectView({ projectId, onBack }: Props) {
         <button className="btn" onClick={() => window.api.openProjectFolder(projectId)}>
           Open Folder
         </button>
-        <button className="btn btn--primary" disabled={importing} onClick={handleImport}>
-          {importing ? 'Importing…' : '+ Import Assets'}
-        </button>
         <button className="btn btn--danger" onClick={handleDeleteProject}>
           Delete Project
         </button>
@@ -107,41 +109,85 @@ export default function ProjectView({ projectId, onBack }: Props) {
 
       {error && <div className="error-banner">{error}</div>}
 
-      {assets.length === 0 ? (
-        <p className="muted">
-          No assets yet. Click "Import Assets" to bring in video, image, or audio files — they'll
-          be organized automatically by type.
-        </p>
-      ) : (
-        KIND_ORDER.map((kind) => {
-          const kindAssets = assets.filter((a) => a.kind === kind)
-          if (kindAssets.length === 0) return null
-          return (
-            <section key={kind} className="asset-section">
-              <h3>
-                {KIND_LABELS[kind]} <span className="muted">({kindAssets.length})</span>
-              </h3>
-              <div className="asset-grid">
-                {kindAssets.map((asset) => (
-                  <div key={asset.id} className="asset-card">
-                    <div className="asset-card__name" title={asset.originalName}>
-                      {asset.originalName}
-                    </div>
-                    <div className="asset-card__meta">{formatBytes(asset.sizeBytes)}</div>
-                    <div className="asset-card__meta">{formatDate(asset.importedAt)}</div>
-                    <button
-                      className="asset-card__delete"
-                      title="Delete asset"
-                      onClick={() => handleDeleteAsset(asset.id)}
-                    >
-                      ×
-                    </button>
+      <div className="tab-bar">
+        <button
+          className={`tab-bar__tab ${tab === 'assets' ? 'tab-bar__tab--active' : ''}`}
+          onClick={() => setTab('assets')}
+        >
+          Assets
+        </button>
+        <button
+          className={`tab-bar__tab ${tab === 'script' ? 'tab-bar__tab--active' : ''}`}
+          onClick={() => setTab('script')}
+        >
+          Script
+        </button>
+        <button
+          className={`tab-bar__tab ${tab === 'scenes' ? 'tab-bar__tab--active' : ''}`}
+          onClick={() => setTab('scenes')}
+        >
+          Scenes & Shots
+        </button>
+      </div>
+
+      {tab === 'assets' && (
+        <div className="tab-panel">
+          <div className="tab-panel__toolbar">
+            <div className="spacer" />
+            <button className="btn btn--primary" disabled={importing} onClick={handleImport}>
+              {importing ? 'Importing…' : '+ Import Assets'}
+            </button>
+          </div>
+
+          {assets.length === 0 ? (
+            <p className="muted">
+              No assets yet. Click "Import Assets" to bring in video, image, or audio files —
+              they'll be organized automatically by type.
+            </p>
+          ) : (
+            KIND_ORDER.map((kind) => {
+              const kindAssets = assets.filter((a) => a.kind === kind)
+              if (kindAssets.length === 0) return null
+              return (
+                <section key={kind} className="asset-section">
+                  <h3>
+                    {KIND_LABELS[kind]} <span className="muted">({kindAssets.length})</span>
+                  </h3>
+                  <div className="asset-grid">
+                    {kindAssets.map((asset) => (
+                      <div key={asset.id} className="asset-card">
+                        <div className="asset-card__name" title={asset.originalName}>
+                          {asset.originalName}
+                        </div>
+                        <div className="asset-card__meta">{formatBytes(asset.sizeBytes)}</div>
+                        <div className="asset-card__meta">{formatDate(asset.importedAt)}</div>
+                        <button
+                          className="asset-card__delete"
+                          title="Delete asset"
+                          onClick={() => handleDeleteAsset(asset.id)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </section>
-          )
-        })
+                </section>
+              )
+            })
+          )}
+        </div>
+      )}
+
+      {tab === 'script' && (
+        <div className="tab-panel">
+          <ScriptEditor projectId={projectId} />
+        </div>
+      )}
+
+      {tab === 'scenes' && (
+        <div className="tab-panel">
+          <SceneList projectId={projectId} assets={assets} />
+        </div>
       )}
     </div>
   )

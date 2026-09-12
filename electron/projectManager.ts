@@ -1,18 +1,29 @@
-import { app, shell } from 'electron'
+import { shell } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { pathExists, readJsonFile, writeJsonFile } from './fsUtils'
+import {
+  ensureProjectsRoot,
+  findProjectDir,
+  readProjectMeta,
+  requireProjectDir,
+  touchProject,
+  writeProjectMeta,
+  type ProjectMeta,
+} from './projectPaths'
 
 // --- Data model -------------------------------------------------------
 //
-// Projects live on disk under `projectsRoot()`, one folder per project:
+// Projects live on disk under `projectsRoot()` (see projectPaths.ts), one
+// folder per project:
 //
 //   <slug>-<shortId>/
 //     project.json      metadata: id, name, createdAt, updatedAt
 //     assets.json        index of imported assets (see Asset below)
 //     assets/
 //       video/  image/  audio/  other/
-//     script/            placeholder for Phase 2 (scripts/scenes/shots)
+//     script/            script/scenes/shots — see productionManager.ts
 //     exports/           placeholder for Phase 6 (export tools)
 //
 // Imported files are copied in under a generated id-based filename
@@ -30,13 +41,6 @@ export interface Asset {
   sizeBytes: number
   importedAt: string
   relativePath: string
-}
-
-export interface ProjectMeta {
-  id: string
-  name: string
-  createdAt: string
-  updatedAt: string
 }
 
 export interface ProjectSummary extends ProjectMeta {
@@ -80,74 +84,15 @@ function slugify(name: string): string {
   return slug || 'project'
 }
 
-async function pathExists(p: string): Promise<boolean> {
-  try {
-    await fs.access(p)
-    return true
-  } catch {
-    return false
-  }
-}
-
 export class ProjectManager {
-  /** Root folder all projects live under: <Documents>/Dan Video Studio/Projects */
-  private root(): string {
-    return path.join(app.getPath('documents'), 'Dan Video Studio', 'Projects')
-  }
-
-  private async ensureRoot(): Promise<string> {
-    const root = this.root()
-    await fs.mkdir(root, { recursive: true })
-    return root
-  }
-
-  private async readMeta(dir: string): Promise<ProjectMeta | null> {
-    try {
-      const raw = await fs.readFile(path.join(dir, 'project.json'), 'utf-8')
-      return JSON.parse(raw) as ProjectMeta
-    } catch {
-      return null
-    }
-  }
-
-  private async writeMeta(dir: string, meta: ProjectMeta): Promise<void> {
-    await fs.writeFile(path.join(dir, 'project.json'), JSON.stringify(meta, null, 2), 'utf-8')
-  }
-
-  private async readAssets(dir: string): Promise<Asset[]> {
-    try {
-      const raw = await fs.readFile(path.join(dir, 'assets.json'), 'utf-8')
-      return JSON.parse(raw) as Asset[]
-    } catch {
-      return []
-    }
-  }
-
-  private async writeAssets(dir: string, assets: Asset[]): Promise<void> {
-    await fs.writeFile(path.join(dir, 'assets.json'), JSON.stringify(assets, null, 2), 'utf-8')
-  }
-
-  /** Resolve a project id to its folder path, or null if not found. */
-  private async findProjectDir(id: string): Promise<string | null> {
-    const root = await this.ensureRoot()
-    const entries = await fs.readdir(root, { withFileTypes: true })
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue
-      const dir = path.join(root, entry.name)
-      const meta = await this.readMeta(dir)
-      if (meta?.id === id) return dir
-    }
-    return null
-  }
-
   async listProjects(): Promise<ProjectSummary[]> {
-    const root = await this.ensureRoot()
+    const root = await ensureProjectsRoot()
     const entries = await fs.readdir(root, { withFileTypes: true })
     const summaries: ProjectSummary[] = []
     for (const entry of entries) {
       if (!entry.isDirectory()) continue
       const dir = path.join(root, entry.name)
-      const meta = await this.readMeta(dir)
+      const meta = await readProjectMeta(dir)
       if (!meta) continue
       const assets = await this.readAssets(dir)
       summaries.push({ ...meta, path: dir, assetCount: assets.length })
@@ -160,7 +105,7 @@ export class ProjectManager {
     const trimmed = name.trim()
     if (!trimmed) throw new Error('Project name cannot be empty.')
 
-    const root = await this.ensureRoot()
+    const root = await ensureProjectsRoot()
     const id = randomUUID()
     const dirName = `${slugify(trimmed)}-${id.slice(0, 8)}`
     const dir = path.join(root, dirName)
@@ -177,16 +122,16 @@ export class ProjectManager {
 
     const now = new Date().toISOString()
     const meta: ProjectMeta = { id, name: trimmed, createdAt: now, updatedAt: now }
-    await this.writeMeta(dir, meta)
+    await writeProjectMeta(dir, meta)
     await this.writeAssets(dir, [])
 
     return { ...meta, path: dir, assetCount: 0 }
   }
 
   async getProject(id: string): Promise<ProjectSummary | null> {
-    const dir = await this.findProjectDir(id)
+    const dir = await findProjectDir(id)
     if (!dir) return null
-    const meta = await this.readMeta(dir)
+    const meta = await readProjectMeta(dir)
     if (!meta) return null
     const assets = await this.readAssets(dir)
     return { ...meta, path: dir, assetCount: assets.length }
@@ -194,26 +139,22 @@ export class ProjectManager {
 
   /** Moves the project folder to the OS trash (recoverable), not a permanent delete. */
   async deleteProject(id: string): Promise<void> {
-    const dir = await this.findProjectDir(id)
-    if (!dir) throw new Error('Project not found.')
+    const dir = await requireProjectDir(id)
     await shell.trashItem(dir)
   }
 
   async openProjectFolder(id: string): Promise<void> {
-    const dir = await this.findProjectDir(id)
-    if (!dir) throw new Error('Project not found.')
+    const dir = await requireProjectDir(id)
     await shell.openPath(dir)
   }
 
   async listAssets(projectId: string): Promise<Asset[]> {
-    const dir = await this.findProjectDir(projectId)
-    if (!dir) throw new Error('Project not found.')
+    const dir = await requireProjectDir(projectId)
     return this.readAssets(dir)
   }
 
   async importAssets(projectId: string, filePaths: string[]): Promise<Asset[]> {
-    const dir = await this.findProjectDir(projectId)
-    if (!dir) throw new Error('Project not found.')
+    const dir = await requireProjectDir(projectId)
 
     const assets = await this.readAssets(dir)
 
@@ -238,15 +179,13 @@ export class ProjectManager {
     }
 
     await this.writeAssets(dir, assets)
-    const meta = await this.readMeta(dir)
-    if (meta) await this.writeMeta(dir, { ...meta, updatedAt: new Date().toISOString() })
+    await touchProject(dir)
 
     return assets
   }
 
   async deleteAsset(projectId: string, assetId: string): Promise<Asset[]> {
-    const dir = await this.findProjectDir(projectId)
-    if (!dir) throw new Error('Project not found.')
+    const dir = await requireProjectDir(projectId)
 
     const assets = await this.readAssets(dir)
     const target = assets.find((a) => a.id === assetId)
@@ -260,5 +199,13 @@ export class ProjectManager {
     const remaining = assets.filter((a) => a.id !== assetId)
     await this.writeAssets(dir, remaining)
     return remaining
+  }
+
+  private async readAssets(dir: string): Promise<Asset[]> {
+    return readJsonFile<Asset[]>(path.join(dir, 'assets.json'), [])
+  }
+
+  private async writeAssets(dir: string, assets: Asset[]): Promise<void> {
+    await writeJsonFile(path.join(dir, 'assets.json'), assets)
   }
 }

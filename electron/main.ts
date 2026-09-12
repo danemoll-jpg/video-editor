@@ -1,11 +1,14 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import path from 'node:path'
 import { ProjectManager } from './projectManager'
+import { ProductionManager } from './productionManager'
+import type { ShotStatus } from './shotStatus'
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL
 
 let mainWindow: BrowserWindow | null = null
 const projectManager = new ProjectManager()
+const productionManager = new ProductionManager()
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -70,4 +73,69 @@ ipcMain.handle('assets:import', async (_e, projectId: string) => {
 
 ipcMain.handle('assets:delete', (_e, projectId: string, assetId: string) =>
   projectManager.deleteAsset(projectId, assetId),
+)
+
+// --- IPC: script ------------------------------------------------------
+
+ipcMain.handle('script:get', (_e, projectId: string) => productionManager.getScript(projectId))
+ipcMain.handle('script:save', (_e, projectId: string, content: string) =>
+  productionManager.saveScript(projectId, content),
+)
+
+// --- IPC: scenes --------------------------------------------------------
+
+ipcMain.handle('scenes:list', (_e, projectId: string) => productionManager.listScenes(projectId))
+
+ipcMain.handle('scenes:create', (_e, projectId: string, title: string, description?: string) =>
+  productionManager.createScene(projectId, title, description),
+)
+
+ipcMain.handle(
+  'scenes:update',
+  (_e, projectId: string, sceneId: string, updates: { title?: string; description?: string }) =>
+    productionManager.updateScene(projectId, sceneId, updates),
+)
+
+ipcMain.handle('scenes:delete', (_e, projectId: string, sceneId: string) =>
+  productionManager.deleteScene(projectId, sceneId),
+)
+
+ipcMain.handle('scenes:move', (_e, projectId: string, sceneId: string, direction: 'up' | 'down') =>
+  productionManager.moveScene(projectId, sceneId, direction),
+)
+
+// --- IPC: shots -----------------------------------------------------------
+
+ipcMain.handle('shots:list', (_e, projectId: string, sceneId?: string) =>
+  productionManager.listShots(projectId, sceneId),
+)
+
+ipcMain.handle(
+  'shots:create',
+  (_e, projectId: string, sceneId: string, title: string, description?: string) =>
+    productionManager.createShot(projectId, sceneId, title, description),
+)
+
+ipcMain.handle(
+  'shots:update',
+  (
+    _e,
+    projectId: string,
+    shotId: string,
+    updates: {
+      title?: string
+      description?: string
+      promptText?: string
+      status?: ShotStatus
+      linkedAssetId?: string | null
+    },
+  ) => productionManager.updateShot(projectId, shotId, updates),
+)
+
+ipcMain.handle('shots:delete', (_e, projectId: string, shotId: string) =>
+  productionManager.deleteShot(projectId, shotId),
+)
+
+ipcMain.handle('shots:move', (_e, projectId: string, shotId: string, direction: 'up' | 'down') =>
+  productionManager.moveShot(projectId, shotId, direction),
 )

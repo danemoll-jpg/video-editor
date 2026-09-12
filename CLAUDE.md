@@ -17,24 +17,33 @@ imports the resulting files.
   `window.api` object via `contextBridge`; `contextIsolation` is on and
   `nodeIntegration` is off, so the renderer never touches Node/fs directly.
 - **Business logic lives in the main process.** `electron/projectManager.ts`
-  (`ProjectManager` class) owns all filesystem access — creating/listing/
-  deleting projects, importing/deleting assets. `electron/main.ts` just wires
-  `ipcMain.handle` calls to it. The renderer only ever calls `window.api.*`
-  methods (typed in `src/api.d.ts`, which mirrors the preload's shape) and
-  renders what comes back — no fs/path logic in `src/`.
+  (`ProjectManager` class) owns projects/assets filesystem access;
+  `electron/productionManager.ts` (`ProductionManager` class) owns
+  script/scenes/shots the same way. Both share project-folder resolution
+  and generic JSON read/write helpers from `electron/projectPaths.ts` and
+  `electron/fsUtils.ts` rather than duplicating them. `electron/main.ts`
+  just wires `ipcMain.handle` calls to whichever manager owns that data.
+  The renderer only ever calls `window.api.*` methods (typed in
+  `src/api.d.ts`, which mirrors the preload's shape) and renders what comes
+  back — no fs/path logic in `src/`. The one deliberate exception:
+  `electron/shotStatus.ts` (the fixed shot-status sequence and labels) has
+  no Node/Electron imports, so the renderer imports it directly instead of
+  duplicating the sequence — see that file's header comment.
 - **State management:** plain React `useState`/`useEffect` per component,
   no global store yet. `src/App.tsx` holds the one piece of cross-component
   state (which project is open) and passes it down. Reassess if/when a later
   phase needs shared state across more views.
-- **Project files on disk** — see `ProjectManager`'s file header comment for
-  the authoritative layout, but in short: each project is a folder under
+- **Project files on disk** — see `ProjectManager`'s and
+  `ProductionManager`'s file header comments for the authoritative layout,
+  but in short: each project is a folder under
   `<Documents>/Dan Video Studio/Projects/<slug>-<shortId>/` holding
-  `project.json` (metadata), `assets.json` (asset index), and
+  `project.json` (metadata), `assets.json` (asset index),
   `assets/{video,image,audio,other}/` (actual files, stored under generated
   ids — never the original filename — so there's no manual versioning like
   `final_v2_FINAL.mp4`; the original name is preserved in `assets.json` for
-  display only). `script/` and `exports/` are empty placeholders for later
-  phases.
+  display only), and `script/script.json`+`scenes.json`+`shots.json` (the
+  Phase 2 script/scenes/shots data). `exports/` is still an empty
+  placeholder, for Phase 6.
 - **Styling:** one plain `src/styles.css` with CSS custom properties for the
   (currently dark-only) theme, plain class names — no CSS-in-JS or utility
   framework. Revisit if the UI grows past Phase 1's few screens.
@@ -55,8 +64,10 @@ this file should stay a short pointer back to TODO.md, not a duplicate.
 
 This is **Dan Video Studio** — a personal desktop app covering the full
 creative process (idea → script → scenes → shots → AI prompts → generated
-assets → editing → export), not just a video editor. **Phase 1 (foundation)
-is built**: project creation/management, an automatically-organized project
-file structure, and basic asset import/storage — see TODO.md's Completed
-Tasks for exactly what shipped and its verification status. Now at
-**Phase 2 (production planning)** — see TODO.md's Current Objective.
+assets → editing → export), not just a video editor. **Phase 1 (foundation)**
+and **Phase 2 (production planning — scripts, scenes, shots, and per-shot
+status tracking)** are both built — see TODO.md's Completed Tasks for
+exactly what shipped in each and its verification status. Phase 2 is
+dev-tested but not yet manually clicked through in the live app — see
+TODO.md's Current Objective, which is that verification pass (not new
+feature work) before Phase 3 (Prompt/Asset Lab) starts.

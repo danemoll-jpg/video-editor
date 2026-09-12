@@ -57,11 +57,72 @@ machine). Verified working on this machine: double-clicking the shortcut
 opens the real "Dan Video Studio" window with no stray console, and closes
 cleanly.
 
+**Phase 2 — Production planning (2026-09-12).** Scripts, scenes, and shots,
+built on top of the Phase 1 project foundation, with per-shot status
+tracking through Planned → Prompt Ready → Generated → Imported → Edited →
+Complete. All of Phase 2's scope shipped — nothing deferred out of it.
+- **Script:** one freeform text/markdown script per project, stored as
+  `script/script.json`; a "Script" tab with a textarea, explicit Save
+  (Ctrl/Cmd+S also saves), and a "last saved" timestamp.
+- **Scenes:** ordered list per project (`script/scenes.json`) — add, rename/
+  edit description, reorder (move up/down), delete (cascades to delete the
+  scene's own shots). Collapsible cards in the "Scenes & Shots" tab.
+- **Shots:** ordered list per scene (`script/shots.json`) — add, edit title/
+  description, reorder within their scene, delete. Each shot carries an AI
+  prompt text field with a "Copy Prompt" button (per CLAUDE.md's "Copy
+  Prompt" plan — no Grok/Suno/ElevenLabs API calls), a status dropdown plus
+  a one-click "advance to next status" button, and an optional link to one
+  of the project's already-imported assets.
+- Architecture: new `electron/productionManager.ts` (`ProductionManager`
+  class) owns all script/scene/shot filesystem access, mirroring how
+  `ProjectManager` owns projects/assets — `electron/main.ts` just wires
+  `ipcMain.handle` calls to it, same as before. Extracted the project-
+  folder-resolution and generic JSON read/write helpers both managers share
+  into new `electron/projectPaths.ts` and `electron/fsUtils.ts` (pure
+  refactor of Phase 1 code, no behavior change). Shot status's type/fixed
+  sequence/labels live in `electron/shotStatus.ts`, which has zero Node
+  imports so it's safe for the renderer to import directly (documented in
+  that file and in `src/api.d.ts`) instead of duplicating the sequence.
+  Renderer stays UI-only, calling `window.api.*` exactly like Phase 1's
+  asset code.
+
+  **Verification status:**
+  - Confirmed working on this machine: `npm run typecheck` and
+    `npm run build` both succeed (renderer + main process).
+  - Confirmed working on this machine, but via a scripted integration test
+    rather than clicking through the UI: create project → save a script →
+    create two scenes → reorder them → create three shots across both
+    scenes → drive a shot through the full Planned→Complete status
+    sequence → reject an invalid status → set/clear a shot's linked asset →
+    reorder shots within a scene → delete a shot (sibling order
+    renormalizes) → delete a scene (cascades to delete its remaining shot,
+    no orphans) → confirm the project's `updatedAt` advanced from all of
+    this. This exercises the exact same `ProductionManager`/`ProjectManager`
+    code the new UI calls, run through the real Electron runtime — same
+    pattern as Phase 1's verification.
+  - Confirmed working on this machine: `npm start` launches a real window
+    (verified via the OS process list), same as Phase 1.
+  - **Not yet done: manual click-through of the Phase 2 UI in the live
+    app.** Unlike the scripted check above, nobody has actually clicked the
+    new Script tab, Scenes & Shots tab, add/edit/reorder/delete buttons, the
+    status dropdown/advance button, "Copy Prompt", or the linked-asset
+    picker in the running app yet — only the underlying main-process logic
+    has been exercised. Needs the same kind of pass Phase 1 got (see its
+    entry above) before Phase 2 is considered fully done.
+  - **Still not done / not verified:** no automated test suite was added
+    (same as Phase 1 — the integration check above is a one-off script, not
+    a committed test). No drag-to-reorder (scenes/shots use up/down buttons
+    instead — not asked for, kept simple). No enforcement that a shot has a
+    linked asset before it's marked Imported/Edited/Complete — linking is
+    optional metadata, not a gate.
+
 Current Objective (Focus Area)
 
-**Phase 2 — Production planning.** Scripts, scenes, shots, and production
-status tracking (Planned → Prompt Ready → Generated → Imported → Edited →
-Complete per shot), built on top of the Phase 1 project foundation above.
+**Manually verify Phase 2 in the live app.** Click through the Script and
+Scenes & Shots tabs end-to-end (see the "not yet done" item directly above)
+and confirm nothing was missed that the scripted check couldn't catch —
+same closing step Phase 1 got. Once that's confirmed, Phase 3 (Prompt/Asset
+Lab, below) becomes current.
 
 Background & Key Decisions
 
@@ -97,8 +158,9 @@ Claude.ai chat.
 
 Next Steps (Do Not Start Yet)
 
-Full phased roadmap, in order — Phase 2 above is current; each phase after
-it stays deferred until the prior one is functional:
+Full phased roadmap, in order — Phase 2 above just shipped (pending manual
+verification, see Current Objective) and Phase 3 is next; each phase after
+that stays deferred until the prior one is functional:
 
 1. **Phase 3 — Prompt/Asset Lab.** Grok Prompt Lab (full prompt history,
    per-clip ratings across character consistency/motion/camera
