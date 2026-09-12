@@ -3,7 +3,7 @@
 // electron/preload.ts, electron/projectManager.ts, and
 // electron/productionManager.ts.
 import type { Asset, AssetKind, ProjectSummary } from '../electron/projectManager'
-import type { Scene, Script, Shot } from '../electron/productionManager'
+import type { Idea, Scene, Script, Shot } from '../electron/productionManager'
 import type {
   PromptEntry,
   PromptEntryInput,
@@ -13,6 +13,7 @@ import type {
   RatingUpdates,
 } from '../electron/promptLabManager'
 import type { SfxLibraryEntry, SfxLibraryEntryInput, SfxLibraryEntryUpdates } from '../electron/sfxLibraryManager'
+import type { AiMessage, AiAssistantContext } from '../electron/aiAssistantManager'
 import type { ShotStatus } from '../electron/shotStatus'
 import type { PromptLabKind } from '../electron/promptLabTypes'
 
@@ -20,6 +21,7 @@ export type {
   Asset,
   AssetKind,
   ProjectSummary,
+  Idea,
   Scene,
   Script,
   Shot,
@@ -34,6 +36,8 @@ export type {
   SfxLibraryEntryInput,
   SfxLibraryEntryUpdates,
   PromptLabKind,
+  AiMessage,
+  AiAssistantContext,
 }
 
 // Note: this file is a .d.ts (declarations only, no JS emitted), so it can
@@ -55,6 +59,9 @@ declare global {
       listAssets(projectId: string): Promise<Asset[]>
       importAssets(projectId: string): Promise<Asset[]>
       deleteAsset(projectId: string, assetId: string): Promise<Asset[]>
+
+      getIdea(projectId: string): Promise<Idea>
+      saveIdea(projectId: string, content: string): Promise<Idea>
 
       getScript(projectId: string): Promise<Script>
       saveScript(projectId: string, content: string): Promise<Script>
@@ -136,6 +143,13 @@ declare global {
       createSfxEntry(projectId: string, input: SfxLibraryEntryInput): Promise<SfxLibraryEntry[]>
       updateSfxEntry(projectId: string, sfxId: string, updates: SfxLibraryEntryUpdates): Promise<SfxLibraryEntry[]>
       deleteSfxEntry(projectId: string, sfxId: string): Promise<SfxLibraryEntry[]>
+
+      hasApiKey(): Promise<boolean>
+      setApiKey(key: string): Promise<boolean>
+      clearApiKey(): Promise<boolean>
+
+      listAiMessages(projectId: string, context: AiAssistantContext): Promise<AiMessage[]>
+      sendAiMessage(projectId: string, context: AiAssistantContext, text: string): Promise<AiMessage[]>
     }
   }
 }

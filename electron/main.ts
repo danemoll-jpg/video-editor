@@ -4,6 +4,8 @@ import { ProjectManager } from './projectManager'
 import { ProductionManager } from './productionManager'
 import { PromptLabManager, type PromptEntryInput, type PromptEntryUpdates, type RatingInput, type RatingUpdates } from './promptLabManager'
 import { SfxLibraryManager, type SfxLibraryEntryInput, type SfxLibraryEntryUpdates } from './sfxLibraryManager'
+import { SettingsManager } from './settingsManager'
+import { AiAssistantManager, type AiAssistantContext } from './aiAssistantManager'
 import type { ShotStatus } from './shotStatus'
 import type { PromptLabKind } from './promptLabTypes'
 
@@ -14,6 +16,8 @@ const projectManager = new ProjectManager()
 const productionManager = new ProductionManager()
 const promptLabManager = new PromptLabManager()
 const sfxLibraryManager = new SfxLibraryManager()
+const settingsManager = new SettingsManager()
+const aiAssistantManager = new AiAssistantManager(settingsManager)
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -78,6 +82,13 @@ ipcMain.handle('assets:import', async (_e, projectId: string) => {
 
 ipcMain.handle('assets:delete', (_e, projectId: string, assetId: string) =>
   projectManager.deleteAsset(projectId, assetId),
+)
+
+// --- IPC: idea ------------------------------------------------------------
+
+ipcMain.handle('idea:get', (_e, projectId: string) => productionManager.getIdea(projectId))
+ipcMain.handle('idea:save', (_e, projectId: string, content: string) =>
+  productionManager.saveIdea(projectId, content),
 )
 
 // --- IPC: script ------------------------------------------------------
@@ -222,4 +233,23 @@ ipcMain.handle('sfx:update', (_e, projectId: string, sfxId: string, updates: Sfx
 
 ipcMain.handle('sfx:delete', (_e, projectId: string, sfxId: string) =>
   sfxLibraryManager.deleteEntry(projectId, sfxId),
+)
+
+// --- IPC: settings (Phase 4 — Anthropic API key) ---------------------------
+//
+// `hasApiKey` only reports whether a key is set — the decrypted key itself
+// never crosses this bridge; only aiAssistantManager.ts (main process) reads
+// it, to call the Anthropic API.
+
+ipcMain.handle('settings:hasApiKey', () => settingsManager.hasApiKey())
+ipcMain.handle('settings:setApiKey', (_e, key: string) => settingsManager.setApiKey(key))
+ipcMain.handle('settings:clearApiKey', () => settingsManager.clearApiKey())
+
+// --- IPC: AI Assistant (Phase 4) -------------------------------------------
+
+ipcMain.handle('ai:list', (_e, projectId: string, context: AiAssistantContext) =>
+  aiAssistantManager.listMessages(projectId, context),
+)
+ipcMain.handle('ai:send', (_e, projectId: string, context: AiAssistantContext, text: string) =>
+  aiAssistantManager.sendMessage(projectId, context, text),
 )

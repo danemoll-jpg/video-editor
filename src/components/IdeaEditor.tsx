@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Script } from '../api'
+import type { Idea } from '../api'
 import { formatDate } from '../format'
 import AiAssistantPanel from './AiAssistantPanel'
 
@@ -7,8 +7,9 @@ interface Props {
   projectId: string
 }
 
-export default function ScriptEditor({ projectId }: Props) {
-  const [script, setScript] = useState<Script | null>(null)
+/** Phase 4's Idea tab — freeform premise/plot notes, same simple pattern as ScriptEditor. */
+export default function IdeaEditor({ projectId }: Props) {
+  const [idea, setIdea] = useState<Idea | null>(null)
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -18,11 +19,11 @@ export default function ScriptEditor({ projectId }: Props) {
     let cancelled = false
     setLoading(true)
     window.api
-      .getScript(projectId)
-      .then((s) => {
+      .getIdea(projectId)
+      .then((i) => {
         if (cancelled) return
-        setScript(s)
-        setDraft(s.content)
+        setIdea(i)
+        setDraft(i.content)
         setError(null)
       })
       .catch((err) => {
@@ -36,12 +37,12 @@ export default function ScriptEditor({ projectId }: Props) {
     }
   }, [projectId])
 
-  const dirty = script !== null && draft !== script.content
+  const dirty = idea !== null && draft !== idea.content
 
   async function handleSave() {
     setSaving(true)
     try {
-      setScript(await window.api.saveScript(projectId, draft))
+      setIdea(await window.api.saveIdea(projectId, draft))
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -50,17 +51,17 @@ export default function ScriptEditor({ projectId }: Props) {
     }
   }
 
-  if (loading) return <p className="muted">Loading script…</p>
+  if (loading) return <p className="muted">Loading idea notes…</p>
 
   return (
     <div className="script-editor">
       <div className="script-editor__toolbar">
         <span className="muted">
-          {script?.updatedAt ? `Last saved ${formatDate(script.updatedAt)}` : 'Not saved yet'}
+          {idea?.updatedAt ? `Last saved ${formatDate(idea.updatedAt)}` : 'Not saved yet'}
         </span>
         <div className="spacer" />
         <button className="btn btn--primary" disabled={!dirty || saving} onClick={handleSave}>
-          {saving ? 'Saving…' : 'Save Script'}
+          {saving ? 'Saving…' : 'Save Idea'}
         </button>
       </div>
 
@@ -76,14 +77,14 @@ export default function ScriptEditor({ projectId }: Props) {
             handleSave()
           }
         }}
-        placeholder="Write your script here — freeform text or markdown. Break it into scenes and shots in the Scenes & Shots tab."
+        placeholder="Freeform notes — premise, plot, tone, references. Break it into a script once it takes shape."
         spellCheck
       />
 
       <AiAssistantPanel
         projectId={projectId}
-        context="script"
-        label="Script Assistant"
+        context="idea"
+        label="Idea Assistant"
         onInsert={(text) => setDraft((d) => (d ? `${d}\n\n${text}` : text))}
       />
     </div>

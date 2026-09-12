@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Asset, AssetKind, ProjectSummary } from '../api'
 import { formatBytes, formatDate } from '../format'
+import IdeaEditor from './IdeaEditor'
 import ScriptEditor from './ScriptEditor'
 import SceneList from './SceneList'
 import PromptLab from './PromptLab'
@@ -19,7 +20,7 @@ const KIND_LABELS: Record<AssetKind, string> = {
 
 const KIND_ORDER: AssetKind[] = ['video', 'image', 'audio', 'other']
 
-type Tab = 'assets' | 'script' | 'scenes' | 'promptlab'
+type Tab = 'assets' | 'idea' | 'script' | 'scenes' | 'promptlab'
 
 export default function ProjectView({ projectId, onBack }: Props) {
   const [project, setProject] = useState<ProjectSummary | null>(null)
@@ -118,6 +119,12 @@ export default function ProjectView({ projectId, onBack }: Props) {
           Assets
         </button>
         <button
+          className={`tab-bar__tab ${tab === 'idea' ? 'tab-bar__tab--active' : ''}`}
+          onClick={() => setTab('idea')}
+        >
+          Idea
+        </button>
+        <button
           className={`tab-bar__tab ${tab === 'script' ? 'tab-bar__tab--active' : ''}`}
           onClick={() => setTab('script')}
         >
@@ -182,6 +189,12 @@ export default function ProjectView({ projectId, onBack }: Props) {
               )
             })
           )}
+        </div>
+      )}
+
+      {tab === 'idea' && (
+        <div className="tab-panel">
+          <IdeaEditor projectId={projectId} />
         </div>
       )}
 

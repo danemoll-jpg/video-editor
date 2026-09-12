@@ -773,6 +773,101 @@ body {
   text-align: right;
 }
 
+/* AI Assistant (Phase 4) */
+
+.ai-assistant {
+  margin-top: 14px;
+}
+
+.ai-assistant__toggle {
+  font-size: 12px;
+}
+
+.ai-assistant__panel {
+  margin-top: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ai-assistant__messages {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-message {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.ai-message--user {
+  border-color: var(--accent);
+}
+
+.ai-message__role {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.ai-message__text {
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.ai-message__insert {
+  margin-top: 8px;
+  font-size: 11px;
+  padding: 4px 10px;
+}
+
+.ai-assistant__composer {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.ai-assistant__composer textarea {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+/* Settings */
+
+.settings-view {
+  max-width: 640px;
+}
+
+.settings-section {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 18px;
+  margin-top: 16px;
+}
+
+.settings-section h3 {
+  margin-top: 0;
+}
+
 /* SFX library */
 
 .sfx-card {

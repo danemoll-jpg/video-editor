@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react'
 import type { Asset, PromptEntry, Recipe, RatingInput, PromptEntryUpdates } from '../api'
-import { PROMPT_LAB_PROMPT_PLACEHOLDER, RATING_DIMENSIONS, labUsesLyrics, type PromptLabKind } from '../../electron/promptLabTypes'
+import {
+  PROMPT_LAB_LABELS,
+  PROMPT_LAB_PROMPT_PLACEHOLDER,
+  RATING_DIMENSIONS,
+  labUsesLyrics,
+  type PromptLabKind,
+} from '../../electron/promptLabTypes'
 import PromptEntryCard from './PromptEntryCard'
 import RecipeCard from './RecipeCard'
 import VersionCompare from './VersionCompare'
+import AiAssistantPanel from './AiAssistantPanel'
 
 interface Props {
   projectId: string
@@ -178,6 +185,16 @@ export default function PromptLabPanel({ projectId, kind, assets }: Props) {
           {showForm ? 'Cancel' : '+ New Prompt'}
         </button>
       </div>
+
+      <AiAssistantPanel
+        projectId={projectId}
+        context={kind}
+        label={`${PROMPT_LAB_LABELS[kind]} Assistant`}
+        onInsert={(text) => {
+          setForm((f) => ({ ...f, promptText: text }))
+          setShowForm(true)
+        }}
+      />
 
       {showRecipes && (
         <section className="recipe-section">

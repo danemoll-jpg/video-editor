@@ -14,6 +14,14 @@ import { SHOT_STATUSES, type ShotStatus } from './shotStatus'
 //     scenes.json   Scene[]
 //     shots.json    Shot[] — each references its scene via sceneId
 //
+// Phase 4 added `idea/idea.json` — a second freeform text/markdown document
+// (premise/plot brainstorming, ahead of script writing) in its own folder
+// rather than `script/`, since it isn't part of the script itself. It's the
+// same trivial shape as `Script` below and gets its own tiny read/write
+// pair here rather than a whole new manager, per CLAUDE.md's "don't triple
+// near-identical code" principle — it's one extra document, not a new
+// subsystem shape.
+//
 // A shot moves through a fixed status sequence as production progresses
 // (see electron/shotStatus.ts): Planned -> Prompt Ready -> Generated ->
 // Imported -> Edited -> Complete. `linkedAssetId` is an optional pointer
@@ -26,6 +34,11 @@ import { SHOT_STATUSES, type ShotStatus } from './shotStatus'
 // sort by it directly.
 
 export interface Script {
+  content: string
+  updatedAt: string
+}
+
+export interface Idea {
   content: string
   updatedAt: string
 }
@@ -53,9 +66,13 @@ export interface Shot {
 }
 
 const EMPTY_SCRIPT: Script = { content: '', updatedAt: '' }
+const EMPTY_IDEA: Idea = { content: '', updatedAt: '' }
 
 function scriptPath(dir: string): string {
   return path.join(dir, 'script', 'script.json')
+}
+function ideaPath(dir: string): string {
+  return path.join(dir, 'idea', 'idea.json')
 }
 function scenesPath(dir: string): string {
   return path.join(dir, 'script', 'scenes.json')
@@ -94,6 +111,21 @@ function swapByOrder<T extends { id: string; order: number }>(
 }
 
 export class ProductionManager {
+  // --- Idea ---------------------------------------------------------------
+
+  async getIdea(projectId: string): Promise<Idea> {
+    const dir = await requireProjectDir(projectId)
+    return readJsonFile<Idea>(ideaPath(dir), EMPTY_IDEA)
+  }
+
+  async saveIdea(projectId: string, content: string): Promise<Idea> {
+    const dir = await requireProjectDir(projectId)
+    const idea: Idea = { content, updatedAt: new Date().toISOString() }
+    await writeJsonFile(ideaPath(dir), idea)
+    await touchProject(dir)
+    return idea
+  }
+
   // --- Script ---------------------------------------------------------
 
   async getScript(projectId: string): Promise<Script> {

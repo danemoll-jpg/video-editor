@@ -225,6 +225,111 @@ Reporting each subsystem separately, as asked:
     actually exists/matches — same "optional metadata, not a gate"
     philosophy as Phase 2's shot linking.
 
+**Phase 4 — AI Assistant (2026-09-12).** All of Phase 4's described scope was
+built — nothing deferred out of it. Added the `@anthropic-ai/sdk` npm
+dependency (main process only); everything else follows the existing
+architecture exactly.
+- **Idea tab:** new per-project freeform text notes for premise/plot
+  brainstorming, mirroring the Script tab's pattern exactly (textarea,
+  explicit Save, "last saved" timestamp) — gives brainstorming a home
+  before script writing starts. Lives in `idea/idea.json`, via two new
+  `getIdea`/`saveIdea` methods on the existing `ProductionManager` (same
+  trivial shape as `Script`, not a new manager — see that file's updated
+  header comment) rather than `script/`, since it isn't part of the script
+  itself. Renderer: `src/components/IdeaEditor.tsx`.
+- **Settings screen:** new app-level (not per-project) screen, reached via
+  an "⚙ Settings" button in the header (`src/components/Settings.tsx`,
+  `src/App.tsx`). Holds a single Anthropic API key field — write-only from
+  the renderer's perspective (`hasApiKey()` reports only whether one is
+  set, never the key itself). New `electron/settingsManager.ts`
+  (`SettingsManager` class) stores it under Electron's `app.getPath
+  ('userData')/settings/anthropicKey.enc`, encrypted via `safeStorage`
+  (OS-level encryption at rest) — not JSON, so this manager talks to `fs`
+  directly rather than reusing `fsUtils.ts`'s JSON helpers (documented in
+  its header). The decrypted key is only ever read by
+  `aiAssistantManager.ts` inside the main process, per CLAUDE.md's "must
+  never reach the renderer" rule.
+- **AI Assistant chat panel** (`src/components/AiAssistantPanel.tsx`), one
+  reusable component embedded in: the new Idea tab, the existing Script
+  tab, and each Prompt Lab sub-tab (Grok/Suno/ElevenLabs — deliberately
+  *not* the SFX library sub-tab, which isn't a prompt-writing context).
+  Starts collapsed (a toggle labeled with its context, e.g. "🤖 Script
+  Assistant") and loads its history lazily on first expand. Every assistant
+  reply has an "Insert" button: Idea/Script append it to that tab's
+  textarea; a Prompt Lab sub-tab sets/opens its "+ New Prompt" composer's
+  prompt field with it, per CLAUDE.md's "drop the response into that tab's
+  field" spec.
+- New `electron/aiAssistantManager.ts` (`AiAssistantManager` class) owns
+  the actual Anthropic API calls and conversation history, mirroring the
+  other managers' shape: `requireProjectDir`/`touchProject` from
+  `projectPaths.ts`, `readJsonFile`/`writeJsonFile` from `fsUtils.ts`.
+  History is saved per project, per context (`idea`, `script`, `grok`,
+  `suno`, `elevenlabs`) under each project's new `aiAssistant/` folder, one
+  JSON file per context — consistent with the app's existing pattern of
+  keeping history (Prompt Lab entries, SFX attribution) rather than losing
+  it. Calls `claude-opus-5` with a per-context system prompt describing its
+  role (idea brainstorming / script writing / Grok video-prompt writing /
+  Suno music-prompt writing / ElevenLabs SFX-prompt writing); a failed call
+  (no key configured, bad key, network error) throws a specific message and
+  writes nothing to the conversation file, rather than saving a question
+  with no answer.
+- **Explicitly not in this phase, per its own scope:** no automatic
+  pulling-in of other project context into any chat — a Prompt Lab
+  assistant is never fed the script, and vice versa; only what the user
+  actually types in that panel is sent to Anthropic. Smarter, history-aware
+  assistance is Phase 8's job (below), which this phase's API plumbing sets
+  up for.
+
+  **Verification status:**
+  - Confirmed working on this machine: `npm run typecheck` and
+    `npm run build` both succeed (renderer + main process); the compiled
+    `dist-electron/main.js` requires every new file cleanly.
+  - Confirmed working on this machine: `npm start` launches a real window
+    titled "Dan's Video Studio" (verified via the OS process list), same as
+    every prior phase.
+  - Confirmed working on this machine, via a scripted integration test run
+    through the real Electron runtime (same pattern as every prior phase):
+    `SettingsManager`'s `safeStorage` round-trip (set/has/get/clear a key),
+    `ProductionManager`'s new `getIdea`/`saveIdea` (empty → saved → persists
+    to disk), `AiAssistantManager.sendMessage` with no key configured
+    (throws the expected error, writes nothing), and — genuinely hitting
+    the real Anthropic API over the network with a deliberately invalid key
+    — confirmed the auth failure is caught and surfaced as a clear message
+    rather than a crash, at zero cost (an auth rejection isn't billed).
+  - Confirmed working on this machine, via a scripted Playwright
+    click-through against the real, built Electron window (same technique
+    as Phase 3's UI verification, run by Claude rather than Dan's own
+    hands, for the same reason as Phase 3's had): created a project;
+    entered and saved Idea notes; expanded the Idea tab's AI Assistant
+    panel and confirmed its empty state; sent a message with no API key
+    configured and confirmed the exact error banner appears in the live
+    UI; opened Settings, saved a (fake) key, confirmed the status flips to
+    "configured," removed it, confirmed it flips back; confirmed the
+    AI Assistant toggle is present on the Script tab and on the Grok, Suno,
+    and ElevenLabs sub-tabs, and confirmed it is absent on the SFX Library
+    sub-tab; seeded a fake assistant reply directly into a project's
+    `aiAssistant/elevenlabs.json` on disk (to avoid a real paid API call)
+    and confirmed clicking its "Insert" button correctly opened the
+    ElevenLabs "+ New Prompt" form with that text in the prompt field.
+  - **Not yet confirmed: an actual successful Anthropic API call (a real
+    question, a real Claude reply) with a real key.** That's the one thing
+    this session deliberately didn't exercise itself, since it costs real
+    money on Dan's own key and wasn't going to spend it without him present
+    — the error-path plumbing (no key / bad key) is confirmed for real
+    end-to-end, but the full happy path (type a question, see a real reply,
+    click Insert on a real reply) still needs Dan's own manual pass with
+    his key entered in Settings. **Phase 4 stays the current objective**
+    until that happens, per this project's normal confirm-then-advance
+    pattern (see how Phases 1-3 were each marked complete only after Dan's
+    own click-through) — Phase 5 below does not start yet.
+  - **Still not done / not verified:** no automated test suite (same
+    caveat as every phase so far). No way to clear/delete AI Assistant
+    conversation history from the UI once started (not asked for; history
+    just accumulates, same philosophy as Prompt Lab's history). No
+    streaming of the assistant's reply (the chat waits for the full
+    response) — fine for the short, focused replies this phase's prompts
+    ask for; revisit if replies start running long enough to feel slow.
+
 Current Objective (Focus Area)
 
 **Phase 3 is now considered complete.** The SFX/ElevenLabs typing bug
@@ -234,34 +339,13 @@ previously failed. **DEFERRED to the backlog, not fixed and not decided
 against** — see Technical Notes below for what to look at if it resurfaces
 with a clearer pattern. Not worth spending more time on right now.
 
-**Phase 4 — AI Assistant (idea/plot/script/prompt help, in-app), now
-current.** Identified as a gap (2026-09-12) — not originally specified in
-the ChatGPT-authored roadmap, not something decided against, genuinely
-overlooked. Inserted here, ahead of the original Phase 4 (renumbered to
-Phase 5 below), per Dan's decision.
-- New **Idea** tab per project: freeform text notes for premise/plot
-  brainstorming, mirroring the existing Script tab's simple pattern
-  (textarea, explicit save, last-saved timestamp) — gives brainstorming a
-  home before script writing starts.
-- **Settings:** an Anthropic API key entry field, stored via Electron's
-  `safeStorage` (OS-level encryption at rest), never in plaintext —
-  confirmed with Dan that using his own key with real per-use API cost is
-  acceptable.
-- An **AI Assistant** chat/help panel, contextually available in: the new
-  Idea tab, the existing Script tab, and each Prompt Lab sub-tab's entry
-  composer (Grok/Suno/ElevenLabs) — send a message, get Claude's response,
-  and an "Insert" button to drop the response into the relevant field
-  rather than just displaying it inertly.
-- Conversation history saved per project, per context (idea/script/each
-  prompt lab) — consistent with this app's existing pattern of keeping
-  history (Prompt Lab entries, SFX attribution) rather than losing it.
-- Calls the Anthropic API directly from the Electron main process only —
-  the API key must never reach the renderer.
-- **Explicitly not in this phase:** no automatic pulling-in of other
-  project context (e.g. don't auto-feed the whole script into a
-  prompt-lab chat) — keep the assistant scoped to whatever's on the
-  current tab for now. Smarter, history-aware assistance is Phase 8's job
-  (below), which this phase's API plumbing sets up for.
+**Phase 4 — AI Assistant is built (see Completed Tasks above) and stays the
+current objective** until Dan does a manual pass with his own Anthropic key
+entered in Settings — everything short of an actual successful API call is
+confirmed above, including the real network call for the error path. Once
+Dan confirms the happy path (ask a question in any of the five contexts, get
+a real reply, Insert it), this phase can be marked complete and Phase 5
+below becomes current.
 
 Background & Key Decisions
 

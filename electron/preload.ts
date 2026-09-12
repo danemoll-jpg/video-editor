@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Asset, ProjectSummary } from './projectManager'
-import type { Scene, Script, Shot } from './productionManager'
+import type { Idea, Scene, Script, Shot } from './productionManager'
 import type {
   PromptEntry,
   PromptEntryInput,
@@ -10,6 +10,7 @@ import type {
   RatingUpdates,
 } from './promptLabManager'
 import type { SfxLibraryEntry, SfxLibraryEntryInput, SfxLibraryEntryUpdates } from './sfxLibraryManager'
+import type { AiMessage, AiAssistantContext } from './aiAssistantManager'
 import type { ShotStatus } from './shotStatus'
 import type { PromptLabKind } from './promptLabTypes'
 
@@ -24,6 +25,10 @@ const api = {
   importAssets: (projectId: string): Promise<Asset[]> => ipcRenderer.invoke('assets:import', projectId),
   deleteAsset: (projectId: string, assetId: string): Promise<Asset[]> =>
     ipcRenderer.invoke('assets:delete', projectId, assetId),
+
+  getIdea: (projectId: string): Promise<Idea> => ipcRenderer.invoke('idea:get', projectId),
+  saveIdea: (projectId: string, content: string): Promise<Idea> =>
+    ipcRenderer.invoke('idea:save', projectId, content),
 
   getScript: (projectId: string): Promise<Script> => ipcRenderer.invoke('script:get', projectId),
   saveScript: (projectId: string, content: string): Promise<Script> =>
@@ -127,6 +132,15 @@ const api = {
   ): Promise<SfxLibraryEntry[]> => ipcRenderer.invoke('sfx:update', projectId, sfxId, updates),
   deleteSfxEntry: (projectId: string, sfxId: string): Promise<SfxLibraryEntry[]> =>
     ipcRenderer.invoke('sfx:delete', projectId, sfxId),
+
+  hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:hasApiKey'),
+  setApiKey: (key: string): Promise<boolean> => ipcRenderer.invoke('settings:setApiKey', key),
+  clearApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:clearApiKey'),
+
+  listAiMessages: (projectId: string, context: AiAssistantContext): Promise<AiMessage[]> =>
+    ipcRenderer.invoke('ai:list', projectId, context),
+  sendAiMessage: (projectId: string, context: AiAssistantContext, text: string): Promise<AiMessage[]> =>
+    ipcRenderer.invoke('ai:send', projectId, context, text),
 }
 
 export type DanVideoStudioApi = typeof api
