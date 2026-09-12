@@ -227,63 +227,41 @@ Reporting each subsystem separately, as asked:
 
 Current Objective (Focus Area)
 
-**Investigated the SFX/ElevenLabs typing bug (2026-09-12) — could not
-reproduce it in the current code.** This needs Dan to look again before
-it's closed out; recorded here so the next session doesn't re-litigate the
-same ground.
+**Phase 3 is now considered complete.** The SFX/ElevenLabs typing bug
+(investigated above) turned out to be intermittent, not a real defect —
+confirmed by Dan that it now works fine even via the exact repro steps that
+previously failed. **DEFERRED to the backlog, not fixed and not decided
+against** — see Technical Notes below for what to look at if it resurfaces
+with a clearer pattern. Not worth spending more time on right now.
 
-What was done, not just asserted: built the app for real (`npm run
-build`), then drove the actual live Electron window — not the manager
-functions, the real rendered UI — with a scripted Playwright `_electron`
-driver (`playwright-core`, installed with `--no-save`, not a project
-dependency), clicking real buttons and sending real synthesized keyboard
-events. Checked, across both the production build (`npm start`'s path)
-and the dev build (`npm run dev`'s path, Vite + React StrictMode):
-  - Typing into every field of both the SFX "+ Add SFX" form and the
-    ElevenLabs "+ New Prompt" form (Name/Tags/Source URL/License/
-    Attribution/Notes for SFX; Prompt/Settings/Notes/Tags for ElevenLabs),
-    both with and without an explicit focus step, both scrolled-into-view
-    and not.
-  - The stronger check, because reading an `<input>`'s raw DOM `.value`
-    after typing can look fine even when a form's React state is broken
-    (an uncontrolled DOM node happily displays whatever was typed even if
-    `onChange` never ran — the tell is that a controlled input like these
-    then snaps back empty on the next re-render): typed a name/prompt,
-    confirmed the Save button's `disabled` state actually lifted (it's
-    driven by `!form.name.trim()`/`!form.promptText.trim()`, i.e. React
-    state, not the DOM), clicked Save, and confirmed the saved entry
-    — read back from the re-rendered list after the round-trip through
-    the IPC call and disk — showed the exact typed text.
-  - Console/page errors during all of the above: none.
-
-Every one of those passed, for both forms, in both builds. Root cause,
-therefore: **not identified, because the bug did not reproduce.** The
-code as committed (`SfxLibraryPanel.tsx`, `PromptLabPanel.tsx` — the same
-component Grok/Suno/ElevenLabs all share) wires every field's `value`/
-`onChange` to the matching state key correctly; no stray `disabled`/
-`readOnly`, no CSS blocking pointer events, no global keydown handler, no
-polling/effect that resets form state unexpectedly. This directly
-contradicts TODO's prior note that ElevenLabs uses "a different sub-tab
-component than Grok/Suno" — it doesn't; it's the same `PromptLabPanel`
-parameterized by `kind`, which is exactly why a bug isolated to
-ElevenLabs-but-not-Grok/Suno is hard to explain from the code as it
-stands. That hypothesis was wrong; flagging it so nobody chases it again.
-
-**Before treating this as fixed, ask Dan for a tighter repro**: which
-exact field, does the Save/Add button also stay disabled (vs. the text
-itself just not appearing), what window size, any non-US keyboard layout
-or IME active, and whether it still happens on a fresh `npm start`. Until
-then this stays open rather than closed on a guess.
-
-Separately, the rest of the "manually verify Phase 3 in the live app"
-pass (the part that wasn't blocked on the bug above) **was completed this
-session** — see Phase 3's verification status above for exactly what was
-clicked through (version comparison, ratings, recipe promotion/rename/
-reuse, SFX-to-asset linking, Suno's lyrics field, ElevenLabs' rating
-dimensions) and the caveat that it was Claude driving the UI, not Dan.
-Phase 4 (Media Management, below) becomes current once Dan confirms either
-that the typing bug isn't reproducible for him either, or gives a repro
-this session can act on.
+**Phase 4 — AI Assistant (idea/plot/script/prompt help, in-app), now
+current.** Identified as a gap (2026-09-12) — not originally specified in
+the ChatGPT-authored roadmap, not something decided against, genuinely
+overlooked. Inserted here, ahead of the original Phase 4 (renumbered to
+Phase 5 below), per Dan's decision.
+- New **Idea** tab per project: freeform text notes for premise/plot
+  brainstorming, mirroring the existing Script tab's simple pattern
+  (textarea, explicit save, last-saved timestamp) — gives brainstorming a
+  home before script writing starts.
+- **Settings:** an Anthropic API key entry field, stored via Electron's
+  `safeStorage` (OS-level encryption at rest), never in plaintext —
+  confirmed with Dan that using his own key with real per-use API cost is
+  acceptable.
+- An **AI Assistant** chat/help panel, contextually available in: the new
+  Idea tab, the existing Script tab, and each Prompt Lab sub-tab's entry
+  composer (Grok/Suno/ElevenLabs) — send a message, get Claude's response,
+  and an "Insert" button to drop the response into the relevant field
+  rather than just displaying it inertly.
+- Conversation history saved per project, per context (idea/script/each
+  prompt lab) — consistent with this app's existing pattern of keeping
+  history (Prompt Lab entries, SFX attribution) rather than losing it.
+- Calls the Anthropic API directly from the Electron main process only —
+  the API key must never reach the renderer.
+- **Explicitly not in this phase:** no automatic pulling-in of other
+  project context (e.g. don't auto-feed the whole script into a
+  prompt-lab chat) — keep the assistant scoped to whatever's on the
+  current tab for now. Smarter, history-aware assistance is Phase 8's job
+  (below), which this phase's API plumbing sets up for.
 
 Background & Key Decisions
 
@@ -322,27 +300,30 @@ Claude.ai chat.
 
 Next Steps (Do Not Start Yet)
 
-Full phased roadmap, in order — Phase 3 above just shipped (pending manual
-verification, see Current Objective) and Phase 4 is next; each phase below
-stays deferred until the prior one is functional:
+Full phased roadmap, in order — Phase 4 (AI Assistant) above is current;
+each phase below stays deferred until the prior one is functional:
 
-1. **Phase 4 — Media Management.** Unified searchable library across video
-   clips, images, music, SFX, generated assets, and exports, tied back to
-   the projects/scenes/shots where each was used.
-2. **Phase 5 — Video Editor.** The actual editing layer: multiple
-   video/audio tracks, trimming/splitting, rearranging clips,
-   overlays/text/titles, fades/dissolves, volume control, green
+1. **Phase 5 — Media Management** *(originally Phase 4).* Unified
+   searchable library across video clips, images, music, SFX, generated
+   assets, and exports, tied back to the projects/scenes/shots where each
+   was used.
+2. **Phase 6 — Video Editor** *(originally Phase 5).* The actual editing
+   layer: multiple video/audio tracks, trimming/splitting, rearranging
+   clips, overlays/text/titles, fades/dissolves, volume control, green
    screen/chroma key, cropping/scaling/positioning, speed adjustment, basic
    transitions, MP4 export. Deliberately not a CapCut feature clone — scoped
    to what this workflow actually needs. Acknowledged as the largest,
    highest-effort phase.
-3. **Phase 6 — Export Tools.** MP4, GIF, still-frame, and clip exports as
-   first-class features (GIF maker: select part of a clip/timeline → choose
-   dimensions/FPS/quality/looping — not buried in a submenu).
-4. **Phase 7 — Smarter Assistance.** Use the accumulated Grok/Suno/SFX
-   prompt history to recommend techniques based on what's actually worked
-   before, rather than generating cold suggestions each time. Considered the
-   most distinctive long-term feature of the whole project.
+3. **Phase 7 — Export Tools** *(originally Phase 6).* MP4, GIF,
+   still-frame, and clip exports as first-class features (GIF maker: select
+   part of a clip/timeline → choose dimensions/FPS/quality/looping — not
+   buried in a submenu).
+4. **Phase 8 — Smarter Assistance** *(originally Phase 7).* Use the
+   accumulated Grok/Suno/SFX prompt history to recommend techniques based on
+   what's actually worked before, rather than generating cold suggestions
+   each time. Considered the most distinctive long-term feature of the
+   whole project — and now directly builds on Phase 4's AI Assistant/API
+   plumbing rather than needing its own from scratch.
 
 **DECIDED: explicitly out of scope, indefinitely** (not "later," genuinely
 declined) — cloud service, mobile app, social/collaboration features, a
@@ -350,6 +331,24 @@ CapCut-style template marketplace, hundreds of filters, built-in
 Grok/Suno generation via API, and any "gigantic AI suite" scope expansion.
 
 Technical Notes / Blockers
+
+- **DEFERRED (backlog, not fixed, not decided against): intermittent
+  SFX/ElevenLabs first-open typing bug.** Seen twice by Dan — text wouldn't
+  enter a field the first time opening the "Add SFX" (or ElevenLabs "New
+  Prompt") form right after launching the app; closing and reopening the
+  form fixed it both times, without restarting the app. A full
+  investigation (real Playwright-driven UI testing, not just checking the
+  underlying manager code) could not reproduce it and found nothing wrong
+  in `SfxLibraryPanel.tsx`/`PromptLabPanel.tsx` — correct `value`/`onChange`
+  wiring, no stray `disabled`/`readOnly`, no blocking CSS, no state-reset
+  effect. Confirmed to be genuinely intermittent, not a permanent defect —
+  Dan confirmed it now works fine via the same repro steps that previously
+  failed. **If it resurfaces:** the pattern (first-open-only, fixed by
+  reopening, no restart needed) suggests a first-mount initialization race
+  rather than broken input wiring — check anything that runs once on
+  initial mount (an empty-dependency-array `useEffect`, a ref not yet
+  attached, an autofocus call racing the DOM). Not worth chasing further
+  without a more consistent repro.
 
 - **Leftover test project folders from this session's UI verification
   (2026-09-12).** The Playwright-driven click-through above created several

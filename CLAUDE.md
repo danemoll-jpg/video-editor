@@ -7,7 +7,11 @@ this code, and Electron's larger ecosystem/training-data presence makes it
 more reliably buildable than Tauri's Rust backend — see TODO.md for full
 reasoning. No external API integration with Grok/Suno/ElevenLabs — the app
 stores and displays prompts for manual copy/paste into those services, and
-imports the resulting files.
+imports the resulting files. **Exception, Phase 4 (current):** direct
+Anthropic API calls for the in-app AI Assistant (idea/plot/script/prompt
+help) — see TODO.md's Current Objective. Called from the main process
+only; the API key (entered in Settings, stored via `safeStorage`) must
+never reach the renderer.
 
 ## Code Style & Architecture
 - **Process split:** `electron/` is the main process (TypeScript, compiled to
@@ -77,11 +81,10 @@ assets → editing → export), not just a video editor. **Phase 1
 (foundation)**, **Phase 2 (production planning — scripts, scenes, shots,
 and per-shot status tracking)**, and **Phase 3 (Prompt/Asset Lab — Grok
 Prompt Lab, Suno Music Lab, SFX library, and ElevenLabs SFX prompt
-history)** are all built — see TODO.md's Completed Tasks for exactly what
-shipped in each and its verification status, reported per-subsystem for
-Phase 3. Phase 3's UI has now been clicked through end-to-end (version
-comparison, ratings, recipe promotion, SFX-to-asset linking, etc.) — see
-TODO.md's Current Objective for the one open item: a SFX-library/
-ElevenLabs text-input bug Dan reported that didn't reproduce under
-investigation and needs a tighter repro from him before it's closed out.
-Phase 4 (Media Management) starts once that's resolved.
+history)** are all built and fully confirmed, including manual
+click-through in the live app — see TODO.md's Completed Tasks. A
+SFX-library/ElevenLabs text-input bug found during Phase 3 verification
+turned out to be intermittent, not a real defect, and is deferred to the
+backlog (see TODO.md's Technical Notes) rather than blocking anything. Now
+at **Phase 4 (AI Assistant — idea/plot/script/prompt help, in-app via the
+Anthropic API)** — see TODO.md's Current Objective.
