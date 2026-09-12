@@ -162,9 +162,9 @@ Reporting each subsystem separately, as asked:
    recipes. The original ask described recipes explicitly for Grok and
    Suno and only "same history/ratings pattern" for ElevenLabs; recipes
    were extended here too since the shared manager provides them for free
-   and leaving ElevenLabs without them would be an arbitrary gap — flagging
-   this as a small scope addition beyond the literal request, not a hidden
-   one.
+   and leaving ElevenLabs without them would be an arbitrary gap — flagged
+   as a small scope addition beyond the literal request. **DECIDED: keep
+   it** (confirmed with Dan, 2026-09-12).
 
   **Verification status (all four subsystems):**
   - Confirmed working on this machine: `npm run typecheck` and
@@ -204,11 +204,24 @@ Reporting each subsystem separately, as asked:
 
 Current Objective (Focus Area)
 
-**Manually verify Phase 3 in the live app.** Click through the new "Prompt
-Lab" tab and all four of its sub-tabs end-to-end (see the "not yet done"
-item directly above) and confirm nothing was missed that the scripted check
-couldn't catch — same closing step Phase 1 and Phase 2 got. Once that's
-confirmed, Phase 4 (Media Management, below) becomes current.
+**Fix a bug found during Phase 3 manual verification, then resume
+verification.** Manual click-through (2026-09-12) found: in the **SFX
+library** and **ElevenLabs** entry-creation forms, text fields don't accept
+typed input at all — confirmed by Dan, same behavior in both, occurring
+right when creating a new entry (not something that only shows up when
+editing afterward). Grok and Suno entry creation was not reported as
+affected. Since SFX and ElevenLabs are the two subsystems with either a
+different manager (`SfxLibraryManager`, not `PromptLabManager`) or, for
+ElevenLabs, a different sub-tab component than Grok/Suno within the same
+lab, this smells like something specific to those two input forms rather
+than the shared `PromptLabManager`/rating logic underneath — but that's a
+hypothesis, not confirmed; needs real diagnosis, not a guess-and-check fix.
+
+Once fixed, resume the "manually verify Phase 3 in the live app" pass:
+click through the new "Prompt Lab" tab and all four of its sub-tabs
+end-to-end (see the "not yet done" item further above) and confirm nothing
+else was missed. Once fully confirmed, Phase 4 (Media Management, below)
+becomes current.
 
 Background & Key Decisions
 
