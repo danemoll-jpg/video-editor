@@ -2,11 +2,58 @@ Active Development Plan
 
 Completed Tasks
 
-None yet — project is in initial planning stage.
+**Phase 1 — Dan Video Studio foundation (2026-09-12).** Electron + React/
+TypeScript app with:
+- Project creation/management: create, list (sorted by last updated),
+  open, delete (moves the project folder to the OS trash, not a permanent
+  delete), and "open in file explorer" for the underlying folder.
+- Automatically-organized project file structure: each project is a folder
+  under `<Documents>/Dan Video Studio/Projects/<slug>-<shortId>/` with
+  `project.json` (metadata), `assets.json` (asset index), `assets/
+  {video,image,audio,other}/`, and empty `script/`/`exports/` placeholders
+  for later phases. Imported files are stored under a generated id-based
+  filename, never the original name, so manual versioned filenames
+  (`final_v2_FINAL...`) are impossible by construction; the original name
+  is kept in `assets.json` for display.
+- Basic asset storage: native "Import Assets" file picker, automatic
+  categorization by extension into video/image/audio/other, grouped display
+  per project, per-asset delete (also trashes rather than permanently
+  deletes).
+- See [CLAUDE.md](CLAUDE.md)'s Code Style & Architecture section for the
+  process split (main vs. renderer) and Commands section for how to run it.
+
+  **Verification status:**
+  - Confirmed working on this machine: `npm install`, `npm run typecheck`,
+    and `npm run build` all succeed; `npm start` launches a real window
+    titled "Dan Video Studio" (verified via the OS process list) and the
+    app auto-creates its `Dan Video Studio/Projects` folder under the
+    actual (OneDrive-redirected) Documents path on first run.
+  - Confirmed working on this machine, but via a scripted integration test
+    rather than clicking through the UI: create project → import a video
+    file and an image file → files land on disk under the correct
+    `assets/<kind>/` folder with generated names → delete one asset →
+    delete the project (trashed) → project list count returns to zero.
+    This exercises the exact same `ProjectManager` code the UI buttons
+    call, run through the real Electron runtime.
+  - **Not done / explicitly not verified:** the React UI itself (buttons,
+    forms, asset grid) was not clicked through in a live window — this
+    session had no GUI-automation tool for a desktop Electron window (only
+    for web pages), so do a quick manual click-through (create a project,
+    import a couple of real files, delete one, delete the project) before
+    relying on it. No automated test suite (Vitest/Playwright etc.) was
+    set up — the integration check above was a one-off script, not a
+    committed test. No packaging/installer (electron-builder or similar)
+    — out of scope for Phase 1, a personal dev-run app; revisit if Phase 6
+    (export tools) or actual distribution needs it. No window-state
+    persistence, app icon, or CI.
 
 Current Objective (Focus Area)
 
-**Phase 1 — Dan Video Studio foundation.**
+**Phase 2 — Production planning.** Scripts, scenes, shots, and production
+status tracking (Planned → Prompt Ready → Generated → Imported → Edited →
+Complete per shot), built on top of the Phase 1 project foundation above.
+
+Background & Key Decisions
 
 DECIDED: adopted the full "Dan Video Studio" roadmap (see project summary,
 originally scoped in a ChatGPT conversation) as the plan of record, in the
@@ -24,12 +71,6 @@ integration with those services initially — the app stores/generates
 prompts with "Copy Prompt" buttons, and you import the resulting files
 manually.
 
-**Phase 1 scope (current focus):** Projects, project files, basic UI, and
-asset storage. A project (e.g. "Abi & Dan – Forest Story") holds its script,
-scenes, shots, prompts, generated videos/images, music, SFX, editing
-timeline, notes, and exports — all organized automatically so file naming
-doesn't degenerate into `final_v2_FINAL_really-final-use-this-one.mp4`.
-
 **RESOLVED — Tauri vs. Electron: Electron.** Reasoning: this is being built
 by a coding agent rather than hand-written, and Electron's ecosystem is far
 larger and better-represented in AI training data, so an agent will write
@@ -46,13 +87,10 @@ Claude.ai chat.
 
 Next Steps (Do Not Start Yet)
 
-Full phased roadmap, in order — each phase deferred until the prior one is
-functional:
+Full phased roadmap, in order — Phase 2 above is current; each phase after
+it stays deferred until the prior one is functional:
 
-1. **Phase 2 — Production Planning.** Scripts, scenes, shots, and
-   production status tracking (Planned → Prompt Ready → Generated →
-   Imported → Edited → Complete per shot).
-2. **Phase 3 — Prompt/Asset Lab.** Grok Prompt Lab (full prompt history,
+1. **Phase 3 — Prompt/Asset Lab.** Grok Prompt Lab (full prompt history,
    per-clip ratings across character consistency/motion/camera
    behavior/prompt obedience/visual quality, version comparison, and
    promotion of successful wording into reusable "recipes" — this is where
@@ -61,20 +99,20 @@ functional:
    version comparison, reusable Music Recipes); SFX library (tagged, licensed
    free-source assets with attribution tracking); ElevenLabs SFX prompt
    history (same history/ratings pattern as Grok and Suno).
-3. **Phase 4 — Media Management.** Unified searchable library across video
+2. **Phase 4 — Media Management.** Unified searchable library across video
    clips, images, music, SFX, generated assets, and exports, tied back to
    the projects/scenes/shots where each was used.
-4. **Phase 5 — Video Editor.** The actual editing layer: multiple
+3. **Phase 5 — Video Editor.** The actual editing layer: multiple
    video/audio tracks, trimming/splitting, rearranging clips,
    overlays/text/titles, fades/dissolves, volume control, green
    screen/chroma key, cropping/scaling/positioning, speed adjustment, basic
    transitions, MP4 export. Deliberately not a CapCut feature clone — scoped
    to what this workflow actually needs. Acknowledged as the largest,
    highest-effort phase.
-5. **Phase 6 — Export Tools.** MP4, GIF, still-frame, and clip exports as
+4. **Phase 6 — Export Tools.** MP4, GIF, still-frame, and clip exports as
    first-class features (GIF maker: select part of a clip/timeline → choose
    dimensions/FPS/quality/looping — not buried in a submenu).
-6. **Phase 7 — Smarter Assistance.** Use the accumulated Grok/Suno/SFX
+5. **Phase 7 — Smarter Assistance.** Use the accumulated Grok/Suno/SFX
    prompt history to recommend techniques based on what's actually worked
    before, rather than generating cold suggestions each time. Considered the
    most distinctive long-term feature of the whole project.

@@ -1,0 +1,244 @@
+:root {
+  color-scheme: dark;
+  --bg: #16181d;
+  --bg-elevated: #1e2128;
+  --border: #2c303a;
+  --text: #e6e8eb;
+  --text-muted: #8b909c;
+  --accent: #5b8def;
+  --accent-hover: #4677d8;
+  --danger: #e05252;
+  --danger-hover: #c93f3f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.app-header__phase {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.app-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.btn {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn:hover {
+  border-color: var(--accent);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn--primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn--danger {
+  color: var(--danger);
+}
+
+.btn--danger:hover {
+  border-color: var(--danger);
+  background: var(--danger-hover);
+  color: #fff;
+}
+
+.error-banner {
+  background: rgba(224, 82, 82, 0.15);
+  border: 1px solid var(--danger);
+  color: #f3b4b4;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+}
+
+/* Project list */
+
+.project-list__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.new-project-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.new-project-form input {
+  flex: 1;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.project-card {
+  text-align: left;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.project-card:hover {
+  border-color: var(--accent);
+}
+
+.project-card__name {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.project-card__meta {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Project view */
+
+.project-view__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.project-view__toolbar h2 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.project-view__path {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin: 0 0 20px;
+  word-break: break-all;
+}
+
+.asset-section {
+  margin-bottom: 24px;
+}
+
+.asset-section h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.asset-card {
+  position: relative;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.asset-card__name {
+  font-weight: 500;
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-card__meta {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.asset-card__delete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.asset-card__delete:hover {
+  color: var(--danger);
+  background: rgba(224, 82, 82, 0.15);
+}
