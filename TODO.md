@@ -47,6 +47,16 @@ TypeScript app with:
     (export tools) or actual distribution needs it. No window-state
     persistence, app icon, or CI.
 
+**Desktop launcher (2026-09-12), on request.** A "Dan Video Studio" shortcut
+on the Desktop double-click-launches the app with no terminal window —
+[launch.vbs](launch.vbs) runs `npm start` hidden (so it always rebuilds and
+reflects the latest code) and the shortcut points at it via `wscript.exe`,
+using Electron's icon. `launch.vbs` is committed; the Desktop `.lnk` itself
+is machine-specific and isn't (recreate it if this repo is cloned to another
+machine). Verified working on this machine: double-clicking the shortcut
+opens the real "Dan Video Studio" window with no stray console, and closes
+cleanly.
+
 Current Objective (Focus Area)
 
 **Phase 2 — Production planning.** Scripts, scenes, shots, and production
