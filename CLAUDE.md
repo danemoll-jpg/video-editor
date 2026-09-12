@@ -79,6 +79,9 @@ and per-shot status tracking)**, and **Phase 3 (Prompt/Asset Lab — Grok
 Prompt Lab, Suno Music Lab, SFX library, and ElevenLabs SFX prompt
 history)** are all built — see TODO.md's Completed Tasks for exactly what
 shipped in each and its verification status, reported per-subsystem for
-Phase 3. Phase 3 is dev-tested but not yet manually clicked through in the
-live app — see TODO.md's Current Objective, which is that verification
-pass (not new feature work) before Phase 4 (Media Management) starts.
+Phase 3. Phase 3's UI has now been clicked through end-to-end (version
+comparison, ratings, recipe promotion, SFX-to-asset linking, etc.) — see
+TODO.md's Current Objective for the one open item: a SFX-library/
+ElevenLabs text-input bug Dan reported that didn't reproduce under
+investigation and needs a tighter repro from him before it's closed out.
+Phase 4 (Media Management) starts once that's resolved.

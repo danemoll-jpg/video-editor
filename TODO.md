@@ -187,13 +187,36 @@ Reporting each subsystem separately, as asked:
     calls, through the real Electron runtime.
   - Confirmed working on this machine: `npm start` launches a real window
     (verified via the OS process list), same as Phase 1/2.
-  - **Not yet done: manual click-through of the Phase 3 UI in the live
-    app**, for all four subsystems — the new "Prompt Lab" tab and its four
-    sub-tabs (Grok, Suno, SFX Library, ElevenLabs), the rating star-pickers,
-    version comparison view, and recipe promotion/reuse flow have not
-    actually been clicked through yet, only exercised via the scripted
-    check above. Needs the same kind of pass Phase 1 and Phase 2 got before
-    Phase 3 is considered fully done.
+  - **CONFIRMED (2026-09-12), UI-level click-through — but driven by Claude
+    via automation, not Dan's own hands (see Current Objective's root-cause
+    note for why: the bug report below didn't reproduce, so this session
+    used a scripted Playwright driver against the real, built Electron
+    window instead of asking Dan to redo the manual pass on the spot).**
+    Built the app for real (`npm run build`) and drove the actual live
+    window — clicking real buttons, typing via synthesized keyboard events,
+    reading back the rendered DOM and screenshots, exactly what a human
+    click-through exercises, as opposed to Phase 1-3's earlier
+    manager-level scripted checks above. Covered, all in the live UI:
+    creating a Grok entry, "New Version From This" to create a second,
+    `parentId`-linked entry, selecting both via their checkboxes to open
+    the Version Compare view (confirmed the two-column side-by-side view
+    rendered with prompts and average ratings), rating a clip (clicked
+    actual stars, confirmed 4/5 filled and the entry's average-rating
+    star/number updated), Promote to Recipe → Show Recipes → Rename →
+    "Use as New Entry" (confirmed the new-entry form came back pre-filled
+    with the recipe's prompt text) — all on Grok, whose UI is identical to
+    Suno/ElevenLabs (same `PromptLabPanel` component). Then, per-subsystem:
+    Suno's Lyrics field is present and round-trips text correctly (Grok/
+    ElevenLabs correctly have no Lyrics field); ElevenLabs' rating form
+    shows exactly its four dimensions (Realism, Timing/Sync, Audio Quality,
+    Prompt Obedience) and a 5-star rating saved correctly; SFX library:
+    imported an audio asset via the Assets tab (mocked the native file
+    picker to hand back a dummy `.wav` since Playwright can't drive an OS
+    file dialog), created an SFX entry, linked it to that asset via the
+    "Linked audio asset" dropdown, confirmed the entry card shows
+    "🔊 test-sfx.wav", and confirmed its Edit form pre-fills correctly.
+    **Not separately re-verified via this pass** (lower risk, no code
+    changed there since Phase 2/3 shipped): Scenes & Shots and Script tabs.
   - **Still not done / not verified:** no automated test suite (same
     caveat as every phase so far). No drag-to-reorder or manual re-sorting
     of history (it's a chronological log, not a manually-ordered list, by
@@ -204,24 +227,63 @@ Reporting each subsystem separately, as asked:
 
 Current Objective (Focus Area)
 
-**Fix a bug found during Phase 3 manual verification, then resume
-verification.** Manual click-through (2026-09-12) found: in the **SFX
-library** and **ElevenLabs** entry-creation forms, text fields don't accept
-typed input at all — confirmed by Dan, same behavior in both, occurring
-right when creating a new entry (not something that only shows up when
-editing afterward). Grok and Suno entry creation was not reported as
-affected. Since SFX and ElevenLabs are the two subsystems with either a
-different manager (`SfxLibraryManager`, not `PromptLabManager`) or, for
-ElevenLabs, a different sub-tab component than Grok/Suno within the same
-lab, this smells like something specific to those two input forms rather
-than the shared `PromptLabManager`/rating logic underneath — but that's a
-hypothesis, not confirmed; needs real diagnosis, not a guess-and-check fix.
+**Investigated the SFX/ElevenLabs typing bug (2026-09-12) — could not
+reproduce it in the current code.** This needs Dan to look again before
+it's closed out; recorded here so the next session doesn't re-litigate the
+same ground.
 
-Once fixed, resume the "manually verify Phase 3 in the live app" pass:
-click through the new "Prompt Lab" tab and all four of its sub-tabs
-end-to-end (see the "not yet done" item further above) and confirm nothing
-else was missed. Once fully confirmed, Phase 4 (Media Management, below)
-becomes current.
+What was done, not just asserted: built the app for real (`npm run
+build`), then drove the actual live Electron window — not the manager
+functions, the real rendered UI — with a scripted Playwright `_electron`
+driver (`playwright-core`, installed with `--no-save`, not a project
+dependency), clicking real buttons and sending real synthesized keyboard
+events. Checked, across both the production build (`npm start`'s path)
+and the dev build (`npm run dev`'s path, Vite + React StrictMode):
+  - Typing into every field of both the SFX "+ Add SFX" form and the
+    ElevenLabs "+ New Prompt" form (Name/Tags/Source URL/License/
+    Attribution/Notes for SFX; Prompt/Settings/Notes/Tags for ElevenLabs),
+    both with and without an explicit focus step, both scrolled-into-view
+    and not.
+  - The stronger check, because reading an `<input>`'s raw DOM `.value`
+    after typing can look fine even when a form's React state is broken
+    (an uncontrolled DOM node happily displays whatever was typed even if
+    `onChange` never ran — the tell is that a controlled input like these
+    then snaps back empty on the next re-render): typed a name/prompt,
+    confirmed the Save button's `disabled` state actually lifted (it's
+    driven by `!form.name.trim()`/`!form.promptText.trim()`, i.e. React
+    state, not the DOM), clicked Save, and confirmed the saved entry
+    — read back from the re-rendered list after the round-trip through
+    the IPC call and disk — showed the exact typed text.
+  - Console/page errors during all of the above: none.
+
+Every one of those passed, for both forms, in both builds. Root cause,
+therefore: **not identified, because the bug did not reproduce.** The
+code as committed (`SfxLibraryPanel.tsx`, `PromptLabPanel.tsx` — the same
+component Grok/Suno/ElevenLabs all share) wires every field's `value`/
+`onChange` to the matching state key correctly; no stray `disabled`/
+`readOnly`, no CSS blocking pointer events, no global keydown handler, no
+polling/effect that resets form state unexpectedly. This directly
+contradicts TODO's prior note that ElevenLabs uses "a different sub-tab
+component than Grok/Suno" — it doesn't; it's the same `PromptLabPanel`
+parameterized by `kind`, which is exactly why a bug isolated to
+ElevenLabs-but-not-Grok/Suno is hard to explain from the code as it
+stands. That hypothesis was wrong; flagging it so nobody chases it again.
+
+**Before treating this as fixed, ask Dan for a tighter repro**: which
+exact field, does the Save/Add button also stay disabled (vs. the text
+itself just not appearing), what window size, any non-US keyboard layout
+or IME active, and whether it still happens on a fresh `npm start`. Until
+then this stays open rather than closed on a guess.
+
+Separately, the rest of the "manually verify Phase 3 in the live app"
+pass (the part that wasn't blocked on the bug above) **was completed this
+session** — see Phase 3's verification status above for exactly what was
+clicked through (version comparison, ratings, recipe promotion/rename/
+reuse, SFX-to-asset linking, Suno's lyrics field, ElevenLabs' rating
+dimensions) and the caveat that it was Claude driving the UI, not Dan.
+Phase 4 (Media Management, below) becomes current once Dan confirms either
+that the typing bug isn't reproducible for him either, or gives a repro
+this session can act on.
 
 Background & Key Decisions
 
@@ -289,6 +351,15 @@ Grok/Suno generation via API, and any "gigantic AI suite" scope expansion.
 
 Technical Notes / Blockers
 
+- **Leftover test project folders from this session's UI verification
+  (2026-09-12).** The Playwright-driven click-through above created several
+  real projects under `Documents/Dan's Video Studio/Projects/` (named
+  `verification-pass-*`, `field-test-*`, `console-test-*`, `dev-mode-test-*`,
+  `input-bug-test-*`, `submit-test-*`) to have something to click through.
+  This session's sandbox permissions blocked cleaning them up (deleting
+  outside the repo was refused), so they're still sitting there — harmless
+  test data, safe to delete via the app's own "Delete Project" (trash) or
+  directly, whenever it's convenient.
 - **Correction, now actually applied (2026-09-12).** This file previously
   claimed the app was renamed "Dan Video Studio" → "Dan's Video Studio,"
   including the on-disk folder path, and verified via a live window title —
