@@ -35,17 +35,17 @@ TypeScript app with:
     delete the project (trashed) → project list count returns to zero.
     This exercises the exact same `ProjectManager` code the UI buttons
     call, run through the real Electron runtime.
-  - **Not done / explicitly not verified:** the React UI itself (buttons,
-    forms, asset grid) was not clicked through in a live window — this
-    session had no GUI-automation tool for a desktop Electron window (only
-    for web pages), so do a quick manual click-through (create a project,
-    import a couple of real files, delete one, delete the project) before
-    relying on it. No automated test suite (Vitest/Playwright etc.) was
-    set up — the integration check above was a one-off script, not a
-    committed test. No packaging/installer (electron-builder or similar)
-    — out of scope for Phase 1, a personal dev-run app; revisit if Phase 6
-    (export tools) or actual distribution needs it. No window-state
-    persistence, app icon, or CI.
+  - **CONFIRMED on real device (2026-09-12), manual click-through by Dan:**
+    created a project, imported files (video and image), deleted an asset,
+    and deleted a project (trash) — all via the actual live UI, not the
+    scripted integration test above. This closes the one item flagged as
+    unverified when Phase 1 first shipped.
+  - **Still not done / not verified:** no automated test suite
+    (Vitest/Playwright etc.) was set up — the integration check above was a
+    one-off script, not a committed test. No packaging/installer
+    (electron-builder or similar) — out of scope for Phase 1, a personal
+    dev-run app; revisit if Phase 6 (export tools) or actual distribution
+    needs it. No window-state persistence, app icon, or CI.
 
 **Desktop launcher (2026-09-12), on request.** A "Dan Video Studio" shortcut
 on the Desktop double-click-launches the app with no terminal window —
