@@ -85,7 +85,7 @@ export default function ProjectList({ onOpenProject }: Props) {
         <p className="muted">Loading projects…</p>
       ) : projects.length === 0 ? (
         <p className="muted">
-          No projects yet. Create your first one to get started — Dan Video Studio will set up
+          No projects yet. Create your first one to get started — Dan's Video Studio will set up
           its folder structure for you automatically.
         </p>
       ) : (

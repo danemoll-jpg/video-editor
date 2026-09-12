@@ -1,4 +1,4 @@
-' Launches Dan Video Studio without popping up a console window.
+' Launches Dan's Video Studio without popping up a console window.
 ' Double-click this file directly, or use the Desktop shortcut created for it.
 ' Rebuilds first (npm start = build + run) so the launcher always reflects
 ' the latest code in this repo.

@@ -8,7 +8,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Dan Video Studio</h1>
+        <h1>Dan's Video Studio</h1>
         <span className="app-header__phase">Phase 3 — Prompt/Asset Lab</span>
       </header>
 

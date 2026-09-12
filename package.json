@@ -2,7 +2,7 @@
   "name": "dan-video-studio",
   "version": "0.1.0",
   "private": true,
-  "description": "Dan Video Studio — personal creative-process desktop app (idea to export). Phase 1: project + asset foundation.",
+  "description": "Dan's Video Studio — personal creative-process desktop app (idea to export). Phase 3: Prompt/Asset Lab.",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev:renderer": "vite",

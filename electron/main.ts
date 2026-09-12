@@ -21,7 +21,7 @@ function createWindow(): void {
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    title: 'Dan Video Studio',
+    title: "Dan's Video Studio",
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

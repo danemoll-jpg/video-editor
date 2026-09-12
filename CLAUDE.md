@@ -43,9 +43,8 @@ imports the resulting files.
 - **Project files on disk** — see `ProjectManager`'s, `ProductionManager`'s,
   `PromptLabManager`'s, and `SfxLibraryManager`'s file header comments for
   the authoritative layout, but in short: each project is a folder under
-  `<Documents>/Dan Video Studio/Projects/<slug>-<shortId>/` (see TODO.md's
-  Technical Notes for a naming-vs-docs discrepancy currently open on this
-  path) holding `project.json` (metadata), `assets.json` (asset index),
+  `<Documents>/Dan's Video Studio/Projects/<slug>-<shortId>/` holding
+  `project.json` (metadata), `assets.json` (asset index),
   `assets/{video,image,audio,other}/` (actual files, stored under generated
   ids — never the original filename — so there's no manual versioning like
   `final_v2_FINAL.mp4`; the original name is preserved in `assets.json` for
@@ -72,7 +71,7 @@ imports the resulting files.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
-This is **Dan Video Studio** — a personal desktop app covering the full
+This is **Dan's Video Studio** — a personal desktop app covering the full
 creative process (idea → script → scenes → shots → AI prompts → generated
 assets → editing → export), not just a video editor. **Phase 1
 (foundation)**, **Phase 2 (production planning — scripts, scenes, shots,

@@ -14,9 +14,9 @@ export interface ProjectMeta {
   updatedAt: string
 }
 
-/** Root folder all projects live under: <Documents>/Dan Video Studio/Projects */
+/** Root folder all projects live under: <Documents>/Dan's Video Studio/Projects */
 export function projectsRoot(): string {
-  return path.join(app.getPath('documents'), 'Dan Video Studio', 'Projects')
+  return path.join(app.getPath('documents'), "Dan's Video Studio", 'Projects')
 }
 
 export async function ensureProjectsRoot(): Promise<string> {

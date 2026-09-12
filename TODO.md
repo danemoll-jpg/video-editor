@@ -276,20 +276,27 @@ Grok/Suno generation via API, and any "gigantic AI suite" scope expansion.
 
 Technical Notes / Blockers
 
-- **Correction (2026-09-12, found while starting Phase 3):** this file
-  previously stated the app was renamed "Dan Video Studio" → "Dan's Video
-  Studio," including the on-disk folder path, and verified via a live
-  window title. That rename was **not actually applied to the code** —
-  `electron/main.ts`'s window title, `electron/projectPaths.ts`'s
-  `<Documents>/...` folder name, `index.html`'s `<title>`,
-  `src/App.tsx`'s header, `src/components/ProjectList.tsx`'s empty-state
-  copy, `package.json`'s description, and `launch.vbs`'s comment all still
-  say "Dan Video Studio" (no apostrophe) as of this Phase 3 build — only
-  this file's prose was changed, not the source. Flagging rather than
-  silently fixing it myself: renaming the on-disk project folder touches
-  real project data paths and wasn't part of the Phase 3 ask, so it needs a
-  deliberate decision (and gets its own verification pass) rather than a
-  drive-by edit buried in an unrelated phase.
+- **Correction, now actually applied (2026-09-12).** This file previously
+  claimed the app was renamed "Dan Video Studio" → "Dan's Video Studio,"
+  including the on-disk folder path, and verified via a live window title —
+  but that rename had only ever been made to this file's prose, not the
+  source (found while starting Phase 3, flagged, left unfixed pending a
+  decision). On request, it's now actually applied: `electron/main.ts`'s
+  window title, `electron/projectPaths.ts`'s `<Documents>/...` folder name,
+  `index.html`'s `<title>`, `src/App.tsx`'s header,
+  `src/components/ProjectList.tsx`'s empty-state copy, `package.json`'s
+  description, and `launch.vbs`'s comment all say "Dan's Video Studio" now.
+  Checked the real (OneDrive-redirected) `Documents/Dan Video Studio/`
+  folder first — it held only an empty `Projects/` subfolder, no actual
+  project data, so no migration was needed; left that old empty folder in
+  place rather than deleting it (harmless, and deleting things nobody asked
+  to delete isn't free). **Confirmed on this machine:** `npm run
+  typecheck`/`npm run build` pass; the Phase 3 integration script (see
+  above) re-run cleanly against the new path, creating its test project
+  under `Documents/Dan's Video Studio/Projects/`; `npm start` launches a
+  real window titled "Dan's Video Studio" (verified via
+  `Get-Process`/`MainWindowTitle`, same check as Phase 1's launcher
+  verification).
 - `electron/fsUtils.ts`'s `writeJsonFile` now `mkdir`s its target folder
   (recursive, idempotent) before writing, added for Phase 3 so
   `promptLabManager.ts`/`sfxLibraryManager.ts` can write into a project's
