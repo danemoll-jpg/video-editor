@@ -2,13 +2,13 @@ Active Development Plan
 
 Completed Tasks
 
-**Phase 1 — Dan Video Studio foundation (2026-09-12).** Electron + React/
+**Phase 1 — Dan's Video Studio foundation (2026-09-12).** Electron + React/
 TypeScript app with:
 - Project creation/management: create, list (sorted by last updated),
   open, delete (moves the project folder to the OS trash, not a permanent
   delete), and "open in file explorer" for the underlying folder.
 - Automatically-organized project file structure: each project is a folder
-  under `<Documents>/Dan Video Studio/Projects/<slug>-<shortId>/` with
+  under `<Documents>/Dan's Video Studio/Projects/<slug>-<shortId>/` with
   `project.json` (metadata), `assets.json` (asset index), `assets/
   {video,image,audio,other}/`, and empty `script/`/`exports/` placeholders
   for later phases. Imported files are stored under a generated id-based
@@ -25,8 +25,8 @@ TypeScript app with:
   **Verification status:**
   - Confirmed working on this machine: `npm install`, `npm run typecheck`,
     and `npm run build` all succeed; `npm start` launches a real window
-    titled "Dan Video Studio" (verified via the OS process list) and the
-    app auto-creates its `Dan Video Studio/Projects` folder under the
+    titled "Dan's Video Studio" (verified via the OS process list) and the
+    app auto-creates its `Dan's Video Studio/Projects` folder under the
     actual (OneDrive-redirected) Documents path on first run.
   - Confirmed working on this machine, but via a scripted integration test
     rather than clicking through the UI: create project → import a video
@@ -47,14 +47,14 @@ TypeScript app with:
     dev-run app; revisit if Phase 6 (export tools) or actual distribution
     needs it. No window-state persistence, app icon, or CI.
 
-**Desktop launcher (2026-09-12), on request.** A "Dan Video Studio" shortcut
+**Desktop launcher (2026-09-12), on request.** A "Dan's Video Studio" shortcut
 on the Desktop double-click-launches the app with no terminal window —
 [launch.vbs](launch.vbs) runs `npm start` hidden (so it always rebuilds and
 reflects the latest code) and the shortcut points at it via `wscript.exe`,
 using Electron's icon. `launch.vbs` is committed; the Desktop `.lnk` itself
 is machine-specific and isn't (recreate it if this repo is cloned to another
 machine). Verified working on this machine: double-clicking the shortcut
-opens the real "Dan Video Studio" window with no stray console, and closes
+opens the real "Dan's Video Studio" window with no stray console, and closes
 cleanly.
 
 **Phase 2 — Production planning (2026-09-12).** Scripts, scenes, and shots,
@@ -102,13 +102,12 @@ Complete. All of Phase 2's scope shipped — nothing deferred out of it.
     pattern as Phase 1's verification.
   - Confirmed working on this machine: `npm start` launches a real window
     (verified via the OS process list), same as Phase 1.
-  - **Not yet done: manual click-through of the Phase 2 UI in the live
-    app.** Unlike the scripted check above, nobody has actually clicked the
-    new Script tab, Scenes & Shots tab, add/edit/reorder/delete buttons, the
-    status dropdown/advance button, "Copy Prompt", or the linked-asset
-    picker in the running app yet — only the underlying main-process logic
-    has been exercised. Needs the same kind of pass Phase 1 got (see its
-    entry above) before Phase 2 is considered fully done.
+  - **CONFIRMED on real device (2026-09-12), manual click-through by Dan:**
+    the Script tab, Scenes & Shots tab (add/edit/reorder/delete scenes and
+    shots, cascade delete), the status dropdown and advance button,
+    "Copy Prompt," and the linked-asset picker were all clicked through in
+    the live app and worked as expected. Closes the one item flagged as
+    unverified when Phase 2 first shipped.
   - **Still not done / not verified:** no automated test suite was added
     (same as Phase 1 — the integration check above is a one-off script, not
     a committed test). No drag-to-reorder (scenes/shots use up/down buttons
@@ -118,22 +117,31 @@ Complete. All of Phase 2's scope shipped — nothing deferred out of it.
 
 Current Objective (Focus Area)
 
-**Manually verify Phase 2 in the live app.** Click through the Script and
-Scenes & Shots tabs end-to-end (see the "not yet done" item directly above)
-and confirm nothing was missed that the scripted check couldn't catch —
-same closing step Phase 1 got. Once that's confirmed, Phase 3 (Prompt/Asset
-Lab, below) becomes current.
+**Phase 3 — Prompt/Asset Lab.** Phase 2 is now fully confirmed (dev-tested
+and manually click-through verified — see Completed Tasks above), so this
+becomes current per the plan. Covers: Grok Prompt Lab (full prompt history,
+per-clip ratings across character consistency/motion/camera
+behavior/prompt obedience/visual quality, version comparison, and
+promotion of successful wording into reusable "recipes" — this is where the
+original Prompt/Continuity Tracker plan lives now, expanded); Suno Music Lab
+(same pattern — prompt/lyrics/settings history, ratings, version
+comparison, reusable Music Recipes); SFX library (tagged, licensed
+free-source assets with attribution tracking); ElevenLabs SFX prompt
+history (same history/ratings pattern as Grok and Suno).
+
+**RESOLVED — build all four Phase 3 subsystems together,** rather than
+splitting into sub-phases.
 
 Background & Key Decisions
 
-DECIDED: adopted the full "Dan Video Studio" roadmap (see project summary,
+DECIDED: adopted the full "Dan's Video Studio" roadmap (see project summary,
 originally scoped in a ChatGPT conversation) as the plan of record, in the
 phased order given there. This **supersedes** the earlier, narrower
 "Prompt/Continuity Tracker" plan as a standalone first build — that work
 isn't lost, it's folded into Phase 3 (Grok Prompt Lab) below, expanded with
 ratings, versioning, and reusable prompt "recipes."
 
-**What Dan Video Studio is:** a personal desktop application covering the
+**What Dan's Video Studio is:** a personal desktop application covering the
 whole creative process — Idea → Script → Scenes → Shots → AI Prompts →
 Generated Assets → Editing → Final Video/GIF — not just a final-cut editor.
 Grok, Suno, free SFX sources, and ElevenLabs stay external; the app
@@ -158,33 +166,23 @@ Claude.ai chat.
 
 Next Steps (Do Not Start Yet)
 
-Full phased roadmap, in order — Phase 2 above just shipped (pending manual
-verification, see Current Objective) and Phase 3 is next; each phase after
-that stays deferred until the prior one is functional:
+Full phased roadmap, in order — Phase 3 above is current; each phase below
+stays deferred until the prior one is functional:
 
-1. **Phase 3 — Prompt/Asset Lab.** Grok Prompt Lab (full prompt history,
-   per-clip ratings across character consistency/motion/camera
-   behavior/prompt obedience/visual quality, version comparison, and
-   promotion of successful wording into reusable "recipes" — this is where
-   the original Prompt/Continuity Tracker plan lives now, expanded); Suno
-   Music Lab (same pattern — prompt/lyrics/settings history, ratings,
-   version comparison, reusable Music Recipes); SFX library (tagged, licensed
-   free-source assets with attribution tracking); ElevenLabs SFX prompt
-   history (same history/ratings pattern as Grok and Suno).
-2. **Phase 4 — Media Management.** Unified searchable library across video
+1. **Phase 4 — Media Management.** Unified searchable library across video
    clips, images, music, SFX, generated assets, and exports, tied back to
    the projects/scenes/shots where each was used.
-3. **Phase 5 — Video Editor.** The actual editing layer: multiple
+2. **Phase 5 — Video Editor.** The actual editing layer: multiple
    video/audio tracks, trimming/splitting, rearranging clips,
    overlays/text/titles, fades/dissolves, volume control, green
    screen/chroma key, cropping/scaling/positioning, speed adjustment, basic
    transitions, MP4 export. Deliberately not a CapCut feature clone — scoped
    to what this workflow actually needs. Acknowledged as the largest,
    highest-effort phase.
-4. **Phase 6 — Export Tools.** MP4, GIF, still-frame, and clip exports as
+3. **Phase 6 — Export Tools.** MP4, GIF, still-frame, and clip exports as
    first-class features (GIF maker: select part of a clip/timeline → choose
    dimensions/FPS/quality/looping — not buried in a submenu).
-5. **Phase 7 — Smarter Assistance.** Use the accumulated Grok/Suno/SFX
+4. **Phase 7 — Smarter Assistance.** Use the accumulated Grok/Suno/SFX
    prompt history to recommend techniques based on what's actually worked
    before, rather than generating cold suggestions each time. Considered the
    most distinctive long-term feature of the whole project.
@@ -196,6 +194,12 @@ Grok/Suno generation via API, and any "gigantic AI suite" scope expansion.
 
 Technical Notes / Blockers
 
+- Renamed the app from "Dan Video Studio" to "Dan's Video Studio"
+  (2026-09-12) — including the on-disk folder path
+  (`<Documents>/Dan's Video Studio/Projects/...`). No migration of existing
+  project data was needed: only test/throwaway projects existed under the
+  old `Dan Video Studio` folder at the time of the rename, so it was left
+  as-is rather than migrated.
 - Repo location: `C:\Users\danmo\video-editor`
 - Tech stack: React/TypeScript + Electron + FFmpeg for video processing.
 - Because this is a real desktop app needing a local dev environment, build
