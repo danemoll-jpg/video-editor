@@ -28,18 +28,10 @@ never reach the renderer.
   subsystems (one manager, parameterized by `kind`, rather than tripling
   near-identical code — see its file header); `electron/sfxLibraryManager.ts`
   (`SfxLibraryManager` class) owns the SFX library, a different shape
-  (tagged licensed assets, not prompt history) so it's a separate manager;
-  `electron/settingsManager.ts` (`SettingsManager` class) owns the single
-  app-level Anthropic API key, `safeStorage`-encrypted outside any project
-  folder; `electron/aiAssistantManager.ts` (`AiAssistantManager` class)
-  owns the Phase 4 AI Assistant's per-project, per-context conversation
-  history and is the only file that calls the Anthropic API, reading the
-  key from `SettingsManager`. All manager classes that touch project data
-  share project-folder resolution and generic JSON read/write helpers from
-  `electron/projectPaths.ts` and `electron/fsUtils.ts` rather than
-  duplicating them (`SettingsManager` is the one exception — it isn't
-  project data and isn't JSON, so it talks to `fs` directly; see its file
-  header). `electron/main.ts` just wires `ipcMain.handle`
+  (tagged licensed assets, not prompt history) so it's a separate manager.
+  All four share project-folder resolution and generic JSON read/write
+  helpers from `electron/projectPaths.ts` and `electron/fsUtils.ts` rather
+  than duplicating them. `electron/main.ts` just wires `ipcMain.handle`
   calls to whichever manager owns that data. The renderer only ever calls
   `window.api.*` methods (typed in `src/api.d.ts`, which mirrors the
   preload's shape) and renders what comes back — no fs/path logic in
@@ -60,16 +52,11 @@ never reach the renderer.
   `assets/{video,image,audio,other}/` (actual files, stored under generated
   ids — never the original filename — so there's no manual versioning like
   `final_v2_FINAL.mp4`; the original name is preserved in `assets.json` for
-  display only), `idea/idea.json` (the Phase 4 Idea tab's freeform notes),
-  `script/script.json`+`scenes.json`+`shots.json` (the Phase 2
-  script/scenes/shots data), `promptlab/` (the Phase 3 Grok/Suno/ElevenLabs
-  prompt histories + recipes, one JSON file pair per lab, plus
-  `sfxLibrary.json` for the SFX library), and `aiAssistant/` (the Phase 4 AI
-  Assistant's per-context conversation histories — `idea.json`,
-  `script.json`, `grok.json`, `suno.json`, `elevenlabs.json`). `exports/` is
-  still an empty placeholder, for Phase 7. The Anthropic API key itself
-  lives outside any project, in Electron's `userData` folder — see
-  `electron/settingsManager.ts`.
+  display only), `script/script.json`+`scenes.json`+`shots.json` (the
+  Phase 2 script/scenes/shots data), and `promptlab/` (the Phase 3 Grok/
+  Suno/ElevenLabs prompt histories + recipes, one JSON file pair per lab,
+  plus `sfxLibrary.json` for the SFX library). `exports/` is still an empty
+  placeholder, for Phase 6.
 - **Styling:** one plain `src/styles.css` with CSS custom properties for the
   (currently dark-only) theme, plain class names — no CSS-in-JS or utility
   framework. Revisit if the UI grows past Phase 1's few screens.
@@ -92,20 +79,15 @@ This is **Dan's Video Studio** — a personal desktop app covering the full
 creative process (idea → script → scenes → shots → AI prompts → generated
 assets → editing → export), not just a video editor. **Phase 1
 (foundation)**, **Phase 2 (production planning — scripts, scenes, shots,
-and per-shot status tracking)**, and **Phase 3 (Prompt/Asset Lab — Grok
-Prompt Lab, Suno Music Lab, SFX library, and ElevenLabs SFX prompt
-history)** are all built and fully confirmed, including manual
-click-through in the live app — see TODO.md's Completed Tasks. A
-SFX-library/ElevenLabs text-input bug found during Phase 3 verification
-turned out to be intermittent, not a real defect, and is deferred to the
-backlog (see TODO.md's Technical Notes) rather than blocking anything.
-
-**Phase 4 (AI Assistant)** is built — an Idea tab, a Settings screen for the
-Anthropic API key, and the AI Assistant chat panel in the Idea/Script/Prompt
-Lab tabs — and confirmed via typecheck/build, a scripted integration test
-(including a real network call to Anthropic's API for the error path), and
-a scripted UI click-through, all described in TODO.md's Completed Tasks.
-**It is still the current objective**, not yet fully confirmed: the one
-thing not exercised is an actual successful API call with a real key, since
-that costs Dan real money and needed him present — see TODO.md's Current
-Objective for exactly what's left.
+and per-shot status tracking)**, **Phase 3 (Prompt/Asset Lab — Grok Prompt
+Lab, Suno Music Lab, SFX library, and ElevenLabs SFX prompt history)**, and
+**Phase 4 (AI Assistant — idea/plot/script/prompt help, in-app via the
+Anthropic API)** are all built and fully confirmed, including manual
+click-through and a real successful API call by Dan with his own key — see
+TODO.md's Completed Tasks. A SFX-library/ElevenLabs text-input bug found
+during Phase 3 verification turned out to be intermittent, not a real
+defect, and is deferred to the backlog (see TODO.md's Technical Notes)
+rather than blocking anything. Current objective is **Phase 5 (Media
+Management)**, with a small AI Assistant UI fix (pin its toggle/panel to
+stay visible at the top of the screen) folded into this phase's work
+rather than done separately.
