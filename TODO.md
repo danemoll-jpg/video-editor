@@ -345,15 +345,15 @@ fix folded in alongside it, per Dan's call — see Current Objective below)*.
   sitting in the project's `exports/` folder (empty until Phase 6/7 build
   actual export tools, but part of the same "everything this project has
   produced" picture).
-- **Scope call:** the original ask named "generated assets" as its own
+- **Scope call, confirmed (2026-09-12):** the original ask named "generated assets" as its own
   category alongside video/images/music/SFX/exports. The existing data
   model has no separate "this was AI-generated" flag on an asset — an
   asset is just an asset, and what makes something "generated" is that a
   Grok/Suno/ElevenLabs prompt entry or rating links to it. Rather than add
   a new field nobody asked for, "generated" is represented by *how* an
   asset is used (a `promptEntry`/`promptRating` usage on its card) instead
-  of a stored label — flagged here as a deliberate scope call, not an
-  oversight.
+  of a stored label. **DECIDED: keep it this way** — Dan doesn't have a
+  strong preference either way, so no separate flag is being added.
 - Architecture: new `electron/mediaLibraryManager.ts` (`MediaLibraryManager`
   class) is a read-only aggregator, not a new storage subsystem — it holds
   no JSON file of its own. It cross-references `ProjectManager`'s
@@ -455,15 +455,47 @@ path himself with his own Anthropic key entered in Settings: prompts
 worked well. This closes the one item that was keeping Phase 4 open (see
 Completed Tasks above for everything confirmed before this).
 
-**Phase 5 — Media Management, built (2026-09-12), now pending
-confirmation** *(originally Phase 4)*. The Media Library tab (unified,
-searchable, cross-referenced back to the shots/prompts/SFX entries that
-use each asset) and the folded-in AI Assistant pin fix are both built,
-dev-tested, and UI-tested via Claude's own scripted Playwright pass — see
-the Phase 5 entry under Completed Tasks above for the full write-up and
-verification detail. **Still the current objective**, same as every prior
-phase's pattern: it needs Dan's own click-through in the live app before
-it's marked fully confirmed. Phase 6 below stays deferred until then.
+**Phase 5 — Media Management, partially confirmed (2026-09-12), scope
+expanded** *(originally Phase 4)*. The Media Library tab itself is
+confirmed by Dan: search, kind filter, "Unused only" checkbox, an unlinked
+asset showing "not used anywhere yet," and the AI Assistant staying pinned
+while scrolling all work as built. **Not yet confirmed / found to be
+missing** during that same pass: Dan could not find any way to link an
+asset to a Grok/Suno/ElevenLabs entry — turns out that control **does not
+exist at all**, not a discoverability issue. This, plus two related design
+gaps Dan surfaced while testing, are now **explicitly part of Phase 5's
+scope** (real rework of Phase 2/3, not new Phase 6 work) — Phase 6 stays
+deferred until all three are done and confirmed:
+
+1. **Add asset-linking to Grok/Suno/ElevenLabs entries.** Currently
+   missing entirely — confirmed by Dan, not a UI-discoverability problem.
+   Since all three share one component/manager (parameterized by `kind`),
+   this is one fix that covers all three, not three separate ones.
+2. **Merge SFX library + ElevenLabs into one unified SFX system.** DECIDED
+   (2026-09-12): one SFX tab/list, with a **source** field distinguishing
+   free/licensed downloads from ElevenLabs-generated ones. **Ratings apply
+   to every entry regardless of source** — Dan explicitly wants to rate
+   plain downloaded SFX too, not just ElevenLabs ones. **REVISED
+   (2026-09-12): prompt/search-term text, version history, and
+   recipe-promotion also apply to every entry, regardless of source** —
+   not ElevenLabs-only as first scoped. Correction: a free/licensed sound
+   still has an equivalent of a "prompt" — the search term used to find it
+   on whatever free SFX source was searched — and it's just as worth
+   tracking which search terms actually turned up something good as it is
+   for AI-generation wording. Label the field generically (e.g. "Prompt /
+   search term") rather than assuming it only means an AI generation
+   prompt. This is a real merge of two existing Phase 3 subsystems, not
+   just a new addition — plan for actual data migration of existing SFX
+   library and ElevenLabs entries into the unified shape, not a
+   fresh-start reset.
+3. **Shots get multiple linked SFX; scenes get multiple linked songs.**
+   DECIDED (2026-09-12): explicitly **not** capped at one of either — Dan
+   gave the example of wanting two different songs across one scene.
+   Extends Phase 2's shot model (currently one optional single-asset link,
+   presumably meant for the shot's primary generated clip — keep that as
+   its own field) with a new multi-asset SFX list; extends Phase 2's scene
+   model (which currently has no asset-linking at all) with a new
+   multi-asset song list.
 
 Background & Key Decisions
 
