@@ -330,6 +330,117 @@ architecture exactly.
     response) — fine for the short, focused replies this phase's prompts
     ask for; revisit if replies start running long enough to feel slow.
 
+**Phase 5 — Media Management (2026-09-12), built** *(the AI Assistant pin
+fix folded in alongside it, per Dan's call — see Current Objective below)*.
+- **Media Library tab:** a new per-project tab, unified and searchable
+  across every imported asset (video/image/audio/other), cross-referencing
+  each one back to where it's actually used — a linked shot (Scenes &
+  Shots), a linked Grok/Suno/ElevenLabs prompt entry or per-clip rating
+  (Prompt Lab), or a linked SFX library entry (tags/license folded
+  straight into the asset's card). A search box matches name, SFX tags/
+  license, or any usage's label/detail (so "Scene 1" or a prompt's wording
+  finds the right asset); a kind filter (All/Video/Image/Audio/Other) and
+  an "Unused only" checkbox narrow the grid further — useful for spotting
+  imported files nothing actually references yet. Also lists whatever's
+  sitting in the project's `exports/` folder (empty until Phase 6/7 build
+  actual export tools, but part of the same "everything this project has
+  produced" picture).
+- **Scope call:** the original ask named "generated assets" as its own
+  category alongside video/images/music/SFX/exports. The existing data
+  model has no separate "this was AI-generated" flag on an asset — an
+  asset is just an asset, and what makes something "generated" is that a
+  Grok/Suno/ElevenLabs prompt entry or rating links to it. Rather than add
+  a new field nobody asked for, "generated" is represented by *how* an
+  asset is used (a `promptEntry`/`promptRating` usage on its card) instead
+  of a stored label — flagged here as a deliberate scope call, not an
+  oversight.
+- Architecture: new `electron/mediaLibraryManager.ts` (`MediaLibraryManager`
+  class) is a read-only aggregator, not a new storage subsystem — it holds
+  no JSON file of its own. It cross-references `ProjectManager`'s
+  assets.json against `ProductionManager`'s shots.json, all three
+  `PromptLabManager` kinds' prompt/rating history, and
+  `SfxLibraryManager`'s sfxLibrary.json (all via each manager's existing
+  public methods, constructor-injected), plus a plain `fs.readdir` of the
+  project's `exports/` folder. `electron/main.ts` wires two new
+  `ipcMain.handle` calls (`media:getLibrary`, `media:listExports`) to it,
+  same pattern as every other manager. Renderer: `src/components/
+  MediaLibrary.tsx` (search/filter/toolbar + the Exports section) and
+  `MediaLibraryCard.tsx` (one asset's card), added as a new "Media Library"
+  tab in `ProjectView.tsx`. To unlink an asset from something, you still go
+  to the tab that owns that link (the shot, the prompt entry/rating, or
+  the SFX entry) — this view is deliberately read-only cross-referencing,
+  not a second place to edit those links.
+- **AI Assistant pin fix, folded in:** `AiAssistantPanel` is now rendered
+  as the very first element in the Idea tab, the Script tab, and each
+  Prompt Lab sub-tab (`IdeaEditor.tsx`, `ScriptEditor.tsx`,
+  `PromptLabPanel.tsx`), and its wrapper (`.ai-assistant` in
+  `src/styles.css`) is now `position: sticky; top: 0` with a solid
+  background and a z-index above the scrolling content — so it stays
+  visible at the top of the screen while the rest of a long tab (a long
+  script, a long prompt history) scrolls underneath it, rather than
+  requiring a scroll down to find it. Unchanged: it's still absent from
+  the SFX Library sub-tab, per Phase 4's original "not a prompt-writing
+  context" call.
+
+  **Verification status:**
+  - Confirmed working on this machine: `npm run typecheck` and
+    `npm run build` both succeed (renderer + main process).
+  - Confirmed working on this machine, via a scripted integration test run
+    through the real Electron runtime (same pattern as every prior phase):
+    created a project, imported a video/audio/image asset, linked the
+    video asset to a shot, to a new Grok prompt entry, and to that entry's
+    clip rating, linked the audio asset to a new SFX library entry — then
+    confirmed `MediaLibraryManager.getLibrary()` correctly reports all
+    three usage types on the video asset, folds the SFX entry's tags/
+    license into the audio asset, and reports the untouched image asset as
+    having zero usages; confirmed `listExports()` reports empty for a
+    fresh project and correctly picks up a file once one exists. Cleaned
+    up (trashed) the test project afterward.
+  - Confirmed working on this machine: `npm start` launches a real window
+    titled "Dan's Video Studio" (verified via `Get-Process`/
+    `MainWindowTitle`), same as every prior phase.
+  - **CONFIRMED (2026-09-12), UI-level click-through — but driven by
+    Claude via a scripted Playwright pass against the real, built Electron
+    window, not Dan's own hands** (same technique and same reason as
+    Phase 3/4's UI verification): created a project via the actual UI;
+    imported three real files, mocking only the native OS file-picker
+    dialog (Playwright can't drive that); added a scene and shot and
+    linked the shot to the video asset via its dropdown; created a Grok
+    prompt entry and rated a clip linked to the video asset; added an SFX
+    library entry linked to the audio asset. Opened the new Media Library
+    tab and confirmed: the video asset's card shows both its shot usage
+    and its Grok rating usage; the audio asset's card shows its SFX usage
+    plus the linked entry's tags and license; the untouched image asset
+    shows "Not used anywhere yet"; the Exports section renders (empty).
+    Confirmed the search box, the kind filter, and the "Unused only"
+    checkbox each correctly narrow the grid to just the matching asset(s).
+    Separately, on the Script tab: expanded the AI Assistant, filled the
+    textarea with enough filler text to force scrolling, scrolled the
+    tab's content, and confirmed via screenshot and a bounding-box check
+    that the AI Assistant panel stayed pinned near the top of the screen
+    instead of scrolling away with the text underneath it. The Idea tab
+    and the Grok/Suno/ElevenLabs sub-tabs use the exact same
+    `AiAssistantPanel` component and `.ai-assistant` CSS class, so this
+    covers them by construction rather than being separately re-tested one
+    by one. All test project folders this pass created were cleaned up
+    afterward — confirmed none left behind this time (a prior phase's
+    cleanup was blocked by sandbox permissions; this one wasn't).
+  - **Not yet confirmed: Dan's own manual click-through in the live app.**
+    Matching this project's established pattern (Phases 1-4 each stayed
+    the current objective until Dan's own hands-on pass, not just
+    Claude's scripted/automated ones), **Phase 5 stays the current
+    objective** until Dan has clicked through the Media Library tab
+    himself and confirmed the AI Assistant now stays pinned while
+    scrolling, in his own usage — Phase 6 below does not start yet.
+  - **Still not done / not verified:** no automated test suite (same
+    caveat as every phase). No thumbnail/preview generation for video/
+    image assets in the Media Library — out of scope for this phase
+    (cross-referencing and search, not a media preview player); revisit
+    if wanted later, likely alongside Phase 6's editor. The Exports
+    section will stay empty until Phase 6/7 actually write files into
+    `exports/` — this phase only added the listing, not export capability
+    itself.
+
 Current Objective (Focus Area)
 
 **Phase 3 is now considered complete.** The SFX/ElevenLabs typing bug
@@ -344,16 +455,15 @@ path himself with his own Anthropic key entered in Settings: prompts
 worked well. This closes the one item that was keeping Phase 4 open (see
 Completed Tasks above for everything confirmed before this).
 
-**Phase 5 — Media Management, now current** *(originally Phase 4).*
-Unified searchable library across video clips, images, music, SFX,
-generated assets, and exports, tied back to the projects/scenes/shots
-where each was used. **Folded in: the small AI Assistant UI fix**
-originally requested as its own item — the AI Assistant toggle/panel
-should stay pinned/visible at the top of the screen at all times rather
-than requiring a scroll, wherever it appears (Idea tab, Script tab,
-Grok/Suno/ElevenLabs sub-tabs). Rolled into this phase rather than done
-separately, per Dan's call — do it alongside Phase 5's work, not as a
-prerequisite blocking it from starting.
+**Phase 5 — Media Management, built (2026-09-12), now pending
+confirmation** *(originally Phase 4)*. The Media Library tab (unified,
+searchable, cross-referenced back to the shots/prompts/SFX entries that
+use each asset) and the folded-in AI Assistant pin fix are both built,
+dev-tested, and UI-tested via Claude's own scripted Playwright pass — see
+the Phase 5 entry under Completed Tasks above for the full write-up and
+verification detail. **Still the current objective**, same as every prior
+phase's pattern: it needs Dan's own click-through in the live app before
+it's marked fully confirmed. Phase 6 below stays deferred until then.
 
 Background & Key Decisions
 

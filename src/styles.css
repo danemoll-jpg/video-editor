@@ -774,9 +774,18 @@ body {
 }
 
 /* AI Assistant (Phase 4) */
+/* Phase 5: pinned to the top of the scrollable area (position: sticky, not
+   just placed first in the DOM) so it stays visible without scrolling no
+   matter how long the rest of the tab's content gets — Idea, Script, and
+   each Prompt Lab sub-tab all render it as their first element. */
 
 .ai-assistant {
-  margin-top: 14px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg);
+  padding-top: 4px;
+  margin-bottom: 14px;
 }
 
 .ai-assistant__toggle {
@@ -885,4 +894,112 @@ body {
   right: 12px;
   display: flex;
   gap: 6px;
+}
+
+/* Media Library (Phase 5) */
+
+.media-library__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.media-library__toolbar input[type='text'],
+.media-library__toolbar select {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.media-library__toolbar input[type='text'] {
+  min-width: 240px;
+  flex: 1;
+  max-width: 420px;
+}
+
+.media-library__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.media-library__exports {
+  margin-top: 24px;
+}
+
+.media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.media-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.media-card__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.media-card__kind {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.media-card__name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-card__meta {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.media-card__usages {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.media-card__usage {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-card__usage-label {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.media-card__unused {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
 }

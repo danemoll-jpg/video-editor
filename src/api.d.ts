@@ -14,6 +14,7 @@ import type {
 } from '../electron/promptLabManager'
 import type { SfxLibraryEntry, SfxLibraryEntryInput, SfxLibraryEntryUpdates } from '../electron/sfxLibraryManager'
 import type { AiMessage, AiAssistantContext } from '../electron/aiAssistantManager'
+import type { MediaLibraryEntry, MediaUsage, ExportFile } from '../electron/mediaLibraryManager'
 import type { ShotStatus } from '../electron/shotStatus'
 import type { PromptLabKind } from '../electron/promptLabTypes'
 
@@ -38,6 +39,9 @@ export type {
   PromptLabKind,
   AiMessage,
   AiAssistantContext,
+  MediaLibraryEntry,
+  MediaUsage,
+  ExportFile,
 }
 
 // Note: this file is a .d.ts (declarations only, no JS emitted), so it can
@@ -150,6 +154,9 @@ declare global {
 
       listAiMessages(projectId: string, context: AiAssistantContext): Promise<AiMessage[]>
       sendAiMessage(projectId: string, context: AiAssistantContext, text: string): Promise<AiMessage[]>
+
+      getMediaLibrary(projectId: string): Promise<MediaLibraryEntry[]>
+      listExports(projectId: string): Promise<ExportFile[]>
     }
   }
 }

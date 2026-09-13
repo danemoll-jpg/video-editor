@@ -160,6 +160,16 @@ export default function PromptLabPanel({ projectId, kind, assets }: Props) {
 
   return (
     <div className="prompt-lab-panel">
+      <AiAssistantPanel
+        projectId={projectId}
+        context={kind}
+        label={`${PROMPT_LAB_LABELS[kind]} Assistant`}
+        onInsert={(text) => {
+          setForm((f) => ({ ...f, promptText: text }))
+          setShowForm(true)
+        }}
+      />
+
       {error && <div className="error-banner">{error}</div>}
 
       {compareEntries.length === 2 && (
@@ -185,16 +195,6 @@ export default function PromptLabPanel({ projectId, kind, assets }: Props) {
           {showForm ? 'Cancel' : '+ New Prompt'}
         </button>
       </div>
-
-      <AiAssistantPanel
-        projectId={projectId}
-        context={kind}
-        label={`${PROMPT_LAB_LABELS[kind]} Assistant`}
-        onInsert={(text) => {
-          setForm((f) => ({ ...f, promptText: text }))
-          setShowForm(true)
-        }}
-      />
 
       {showRecipes && (
         <section className="recipe-section">

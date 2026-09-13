@@ -54,6 +54,13 @@ export default function ScriptEditor({ projectId }: Props) {
 
   return (
     <div className="script-editor">
+      <AiAssistantPanel
+        projectId={projectId}
+        context="script"
+        label="Script Assistant"
+        onInsert={(text) => setDraft((d) => (d ? `${d}\n\n${text}` : text))}
+      />
+
       <div className="script-editor__toolbar">
         <span className="muted">
           {script?.updatedAt ? `Last saved ${formatDate(script.updatedAt)}` : 'Not saved yet'}
@@ -78,13 +85,6 @@ export default function ScriptEditor({ projectId }: Props) {
         }}
         placeholder="Write your script here — freeform text or markdown. Break it into scenes and shots in the Scenes & Shots tab."
         spellCheck
-      />
-
-      <AiAssistantPanel
-        projectId={projectId}
-        context="script"
-        label="Script Assistant"
-        onInsert={(text) => setDraft((d) => (d ? `${d}\n\n${text}` : text))}
       />
     </div>
   )

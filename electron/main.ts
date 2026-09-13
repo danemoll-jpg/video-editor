@@ -6,6 +6,7 @@ import { PromptLabManager, type PromptEntryInput, type PromptEntryUpdates, type 
 import { SfxLibraryManager, type SfxLibraryEntryInput, type SfxLibraryEntryUpdates } from './sfxLibraryManager'
 import { SettingsManager } from './settingsManager'
 import { AiAssistantManager, type AiAssistantContext } from './aiAssistantManager'
+import { MediaLibraryManager } from './mediaLibraryManager'
 import type { ShotStatus } from './shotStatus'
 import type { PromptLabKind } from './promptLabTypes'
 
@@ -18,6 +19,12 @@ const promptLabManager = new PromptLabManager()
 const sfxLibraryManager = new SfxLibraryManager()
 const settingsManager = new SettingsManager()
 const aiAssistantManager = new AiAssistantManager(settingsManager)
+const mediaLibraryManager = new MediaLibraryManager(
+  projectManager,
+  productionManager,
+  promptLabManager,
+  sfxLibraryManager,
+)
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -253,3 +260,8 @@ ipcMain.handle('ai:list', (_e, projectId: string, context: AiAssistantContext) =
 ipcMain.handle('ai:send', (_e, projectId: string, context: AiAssistantContext, text: string) =>
   aiAssistantManager.sendMessage(projectId, context, text),
 )
+
+// --- IPC: Media Library (Phase 5) -------------------------------------------
+
+ipcMain.handle('media:getLibrary', (_e, projectId: string) => mediaLibraryManager.getLibrary(projectId))
+ipcMain.handle('media:listExports', (_e, projectId: string) => mediaLibraryManager.listExports(projectId))

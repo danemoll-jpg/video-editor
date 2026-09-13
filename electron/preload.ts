@@ -11,6 +11,7 @@ import type {
 } from './promptLabManager'
 import type { SfxLibraryEntry, SfxLibraryEntryInput, SfxLibraryEntryUpdates } from './sfxLibraryManager'
 import type { AiMessage, AiAssistantContext } from './aiAssistantManager'
+import type { MediaLibraryEntry, ExportFile } from './mediaLibraryManager'
 import type { ShotStatus } from './shotStatus'
 import type { PromptLabKind } from './promptLabTypes'
 
@@ -141,6 +142,10 @@ const api = {
     ipcRenderer.invoke('ai:list', projectId, context),
   sendAiMessage: (projectId: string, context: AiAssistantContext, text: string): Promise<AiMessage[]> =>
     ipcRenderer.invoke('ai:send', projectId, context, text),
+
+  getMediaLibrary: (projectId: string): Promise<MediaLibraryEntry[]> =>
+    ipcRenderer.invoke('media:getLibrary', projectId),
+  listExports: (projectId: string): Promise<ExportFile[]> => ipcRenderer.invoke('media:listExports', projectId),
 }
 
 export type DanVideoStudioApi = typeof api

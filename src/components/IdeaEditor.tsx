@@ -55,6 +55,13 @@ export default function IdeaEditor({ projectId }: Props) {
 
   return (
     <div className="script-editor">
+      <AiAssistantPanel
+        projectId={projectId}
+        context="idea"
+        label="Idea Assistant"
+        onInsert={(text) => setDraft((d) => (d ? `${d}\n\n${text}` : text))}
+      />
+
       <div className="script-editor__toolbar">
         <span className="muted">
           {idea?.updatedAt ? `Last saved ${formatDate(idea.updatedAt)}` : 'Not saved yet'}
@@ -79,13 +86,6 @@ export default function IdeaEditor({ projectId }: Props) {
         }}
         placeholder="Freeform notes — premise, plot, tone, references. Break it into a script once it takes shape."
         spellCheck
-      />
-
-      <AiAssistantPanel
-        projectId={projectId}
-        context="idea"
-        label="Idea Assistant"
-        onInsert={(text) => setDraft((d) => (d ? `${d}\n\n${text}` : text))}
       />
     </div>
   )

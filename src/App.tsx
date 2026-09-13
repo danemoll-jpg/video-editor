@@ -11,7 +11,7 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <h1>Dan's Video Studio</h1>
-        <span className="app-header__phase">Phase 4 — AI Assistant</span>
+        <span className="app-header__phase">Phase 5 — Media Management</span>
         <div className="spacer" />
         <button className="btn" onClick={() => setShowSettings((s) => !s)}>
           {showSettings ? '← Back' : '⚙ Settings'}
