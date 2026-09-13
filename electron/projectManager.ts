@@ -12,6 +12,8 @@ import {
   writeProjectMeta,
   type ProjectMeta,
 } from './projectPaths'
+import { probeMedia } from './mediaProbe'
+import { extractAudioTrack } from './audioExtractor'
 
 // --- Data model -------------------------------------------------------
 //
@@ -215,6 +217,49 @@ export class ProjectManager {
     const remaining = assets.filter((a) => a.id !== assetId)
     await this.writeAssets(dir, remaining)
     return remaining
+  }
+
+  /**
+   * Pulls a video asset's audio track out into a real new standalone audio
+   * asset (TODO.md's audio-extraction item 1) — added to `assets/audio/` and
+   * `assets.json` exactly like any imported file, so it can be linked to a
+   * shot, a scene's songs, an SFX entry, or dragged onto an editor audio
+   * track like any other audio asset. (Extracting a *timeline clip's* audio
+   * onto its own audio-track clip, item 2, is a different operation — see
+   * `EditorManager.extractClipAudio`, which doesn't need a new file at all.)
+   */
+  async extractAudioAsset(projectId: string, assetId: string): Promise<Asset[]> {
+    const dir = await requireProjectDir(projectId)
+    const assets = await this.readAssets(dir)
+    const source = assets.find((a) => a.id === assetId)
+    if (!source) throw new Error('Asset not found.')
+    if (source.kind !== 'video') throw new Error('Only video assets have an audio track to extract.')
+
+    const sourcePath = path.join(dir, source.relativePath)
+    const info = await probeMedia(sourcePath).catch(() => null)
+    if (!info?.hasAudio) throw new Error('This video has no audio track to extract.')
+
+    const newId = randomUUID()
+    const storedFileName = `${newId}.m4a`
+    const relativePath = path.join('assets', 'audio', storedFileName)
+    await extractAudioTrack(sourcePath, path.join(dir, relativePath))
+    const stat = await fs.stat(path.join(dir, relativePath))
+
+    const baseName = path.basename(source.originalName, path.extname(source.originalName))
+    const newAsset: Asset = {
+      id: newId,
+      originalName: `${baseName} (audio).m4a`,
+      storedFileName,
+      kind: 'audio',
+      sizeBytes: stat.size,
+      importedAt: new Date().toISOString(),
+      relativePath,
+    }
+
+    const updated = [...assets, newAsset]
+    await this.writeAssets(dir, updated)
+    await touchProject(dir)
+    return updated
   }
 
   private async readAssets(dir: string): Promise<Asset[]> {

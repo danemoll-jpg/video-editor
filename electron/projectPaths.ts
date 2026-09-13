@@ -1,7 +1,7 @@
-import { app } from 'electron'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { readJsonFile, writeJsonFile } from './fsUtils'
+import { getLibraryBaseDir } from './libraryLocation'
 
 // Shared project-folder resolution, used by both projectManager.ts (projects
 // and assets) and productionManager.ts (script/scenes/shots) so there's one
@@ -14,13 +14,19 @@ export interface ProjectMeta {
   updatedAt: string
 }
 
-/** Root folder all projects live under: <Documents>/Dan's Video Studio/Projects */
-export function projectsRoot(): string {
-  return path.join(app.getPath('documents'), "Dan's Video Studio", 'Projects')
+/**
+ * Root folder all projects live under: `<library base dir>/Projects`, where
+ * the base dir is `<Documents>/Dan's Video Studio` by default but can be
+ * relocated via Settings (see libraryLocation.ts/libraryRelocationManager.ts)
+ * — async (unlike before this existed) since resolving it now means reading
+ * that small preference file.
+ */
+export async function projectsRoot(): Promise<string> {
+  return path.join(await getLibraryBaseDir(), 'Projects')
 }
 
 export async function ensureProjectsRoot(): Promise<string> {
-  const root = projectsRoot()
+  const root = await projectsRoot()
   await fs.mkdir(root, { recursive: true })
   return root
 }

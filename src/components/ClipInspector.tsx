@@ -20,17 +20,28 @@ function NumberField({
   label,
   value,
   step = 0.1,
+  min,
+  max,
   onChange,
 }: {
   label: string
   value: number
   step?: number
+  min?: number
+  max?: number
   onChange: (value: number) => void
 }) {
   return (
     <label className="clip-inspector__field">
       <span>{label}</span>
-      <input type="number" step={step} value={Number.isFinite(value) ? Number(value.toFixed(3)) : 0} onChange={(e) => onChange(Number(e.target.value))} />
+      <input
+        type="number"
+        step={step}
+        min={min}
+        max={max}
+        value={Number.isFinite(value) ? Number(value.toFixed(3)) : 0}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
     </label>
   )
 }
@@ -73,6 +84,16 @@ export default function ClipInspector({ clip, playhead, onUpdate, onDelete, onSp
                 onChange={(e) => onUpdate({ includeAudio: e.target.checked })}
               />
               Include this clip's audio
+            </label>
+          </div>
+          <div className="clip-inspector__row">
+            <label className="clip-inspector__checkbox">
+              <input type="checkbox" checked={clip.reverse} onChange={(e) => onUpdate({ reverse: e.target.checked })} />
+              Reverse
+            </label>
+            <label className="clip-inspector__checkbox">
+              <input type="checkbox" checked={clip.mirror} onChange={(e) => onUpdate({ mirror: e.target.checked })} />
+              Mirror / flip horizontal
             </label>
           </div>
         </>
@@ -167,12 +188,16 @@ export default function ClipInspector({ clip, playhead, onUpdate, onDelete, onSp
                   label="Similarity"
                   value={clip.chromaKey.similarity}
                   step={0.01}
+                  min={0.01}
+                  max={1}
                   onChange={(v) => onUpdate({ chromaKey: { ...clip.chromaKey, similarity: v } })}
                 />
                 <NumberField
                   label="Blend"
                   value={clip.chromaKey.blend}
                   step={0.01}
+                  min={0}
+                  max={1}
                   onChange={(v) => onUpdate({ chromaKey: { ...clip.chromaKey, blend: v } })}
                 />
               </div>

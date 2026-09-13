@@ -107,6 +107,10 @@ export interface Clip {
   chromaKey: ChromaKey
   transitionOut: Transition
   text: TextStyle | null
+  /** Plays the clip's source (video and its own audio, if included) backwards. Media clips only. */
+  reverse: boolean
+  /** Flips the clip horizontally (mirror image). Media clips only. */
+  mirror: boolean
 }
 
 export interface ProjectSettings {

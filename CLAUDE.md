@@ -60,11 +60,20 @@ browser treating it as cross-origin.
   `acrossfade` for transitions, `overlay`/`amix` to composite). Both are
   supported by small single-purpose files: `electron/mediaProbe.ts`
   (FFprobe metadata lookups), `electron/videoRuntime.ts` (resolves the
-  bundled FFmpeg/FFprobe binaries), and `electron/mediaProtocol.ts` (the
+  bundled FFmpeg/FFprobe binaries), `electron/mediaProtocol.ts` (the
   `media://` protocol the renderer's preview player uses to actually play a
-  file). All storage managers share project-folder resolution and generic
-  JSON read/write helpers from `electron/projectPaths.ts` and
-  `electron/fsUtils.ts` rather than duplicating them. `electron/main.ts`
+  file), and (Phase 6 continued) `electron/audioExtractor.ts` (the one
+  other FFmpeg call site besides `VideoExportManager` — pulls a file's
+  audio track out via `-vn`, used by `ProjectManager.extractAudioAsset`'s
+  "Extract Audio" asset action). Library relocation splits the same way:
+  `electron/libraryLocation.ts` is pure preference-reading (where the
+  library currently lives — a small JSON file under Electron's userData
+  folder, read by `projectPaths.ts`'s now-async `projectsRoot()`) and
+  `electron/libraryRelocationManager.ts` (`LibraryRelocationManager` class)
+  is the one place that actually moves the data. All storage managers share
+  project-folder resolution and generic JSON read/write helpers from
+  `electron/projectPaths.ts` and `electron/fsUtils.ts` rather than
+  duplicating them. `electron/main.ts`
   just wires `ipcMain.handle` calls to whichever manager owns that data
   (plus, for the export's progress bar, one `webContents.send` per progress
   tick). The renderer only ever calls `window.api.*` methods (typed in
@@ -147,16 +156,31 @@ volume, chroma key, crop/scale/position, speed, a curated set of basic
 transitions, and real MP4 export via a bundled FFmpeg — is built and
 dev-tested (including a Claude-driven UI click-through of the actual app)
 but **not yet confirmed by Dan's own hands**, so it's still the current
-objective; Phase 7 doesn't start until that happens. **Nine more items
-were added to this phase's scope (2026-09-13) before that happens** (a
+objective; Phase 7 doesn't start until that happens. **Nine more items were
+added to this phase's scope (2026-09-13), and are now all built too** (a
 tenth, a text-overlay flow fix, was withdrawn — turned out to be a
-misunderstanding, not a real gap) — two audio-extraction features
-(standalone asset + timeline clip), a confirmed real bug (chroma key
-breaks specifically on export — keyed areas render as opaque black —
-likely an alpha/pixel-format issue in the FFmpeg filter chain, needs real
-pixel-level verification this time, not just FFprobe stream checks), a
-library-relocation Settings option (with real data migration), a
-per-export destination choice, direct-manipulation editing on the preview
-(drag to move/crop), a right-click context menu on clips, reverse/mirror
-clip support, and playhead drag-precision improvements. See TODO.md's
-Current Objective and Completed Tasks for the full record.
+misunderstanding, not a real gap): two audio-extraction features (a
+standalone-asset action on the Assets tab, and a timeline-clip context-menu
+action that needs no new file since it just points a new audio-track clip
+at the same source asset); the chroma-key-on-export bug got real diagnostic
+work (a battery of real-pipeline, pixel-verified tests — none reproduced
+Dan's exact symptom on this machine's bundled FFmpeg build) and one
+concrete hardening fix regardless (`overlay=format=auto` plus consistently
+re-asserting an alpha-carrying pixel format through the whole compositing
+chain, since the previous code's reliance on the `overlay` filter's
+non-alpha default format was real); a Settings library-relocation option
+with a genuine data migration (`electron/libraryLocation.ts` +
+`libraryRelocationManager.ts` — `projectPaths.ts`'s root is now async and
+reads that preference); a per-export destination choice; direct-manipulation
+editing on the Preview Player (drag to move, drag corner handles to crop —
+a plain DOM overlay atop the `<canvas>`, not canvas-drawn); a right-click
+context menu on clips (split/duplicate/extract audio/delete, via new
+`EditorManager.duplicateClip`/`extractClipAudio`); reverse/mirror clip
+properties (`Clip.reverse`/`mirror`, both with real FFmpeg export support —
+`reverse`/`areverse`/`hflip` — and mirror also previewing correctly live;
+reverse has no live-preview equivalent, a documented simplification since
+browsers can't play `<video>` backwards); and playhead drag-precision via
+scrub-to-seek plus a live time-readout tooltip while dragging the playhead
+or a trim handle. See TODO.md's Current Objective and Completed Tasks for
+the full per-item record, including the one item (chroma key) still not
+confirmed fixed and what to capture if it resurfaces.

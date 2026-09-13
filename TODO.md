@@ -751,6 +751,232 @@ project's habit is, rather than one rolled-up "done":
     binaries since the app still isn't packaged (same as every prior
     phase's note on this).
 
+**Phase 6 continued — the nine remaining scope items (2026-09-13), built.**
+Reporting each separately, as this project's habit is — none rolled up into
+one "done" statement. (The tenth item, a text-overlay flow fix, stayed
+withdrawn — see Current Objective below, no code change there.)
+
+1. **Extract audio from an imported video asset into a new standalone audio
+   asset — built, nothing deferred.** A new "🎵 Extract Audio" button on
+   each video asset's card in the Assets tab runs FFmpeg's `-vn` (via a new,
+   single-purpose `electron/audioExtractor.ts`, re-encoding to AAC so the
+   output plays correctly regardless of the source's original audio codec)
+   and adds the result to `assets/audio/` and `assets.json` exactly like any
+   imported file — `ProjectManager.extractAudioAsset`, wired through a new
+   `assets:extractAudio` IPC call. From there it's usable anywhere an audio
+   asset can be: linked to a shot, a scene's songs, an SFX entry, or dragged
+   onto an editor audio track. Rejects cleanly (no partial file left behind)
+   if the source isn't a video or has no audio track. Deliberately only
+   added to the Assets tab, not also duplicated into the Media Library —
+   that view is deliberately read-only cross-referencing per Phase 5's
+   design, and Assets already has per-asset actions (Delete) as its natural
+   home for a new one.
+2. **Extract a timeline clip's audio onto its own independent audio-track
+   clip — built, nothing deferred.** A new "🎵 Extract Audio to Track"
+   context-menu action (see item 8) on any media clip — `EditorManager.
+   extractClipAudio` — creates a new clip on an audio track (reusing an
+   existing audio track with a free time slot, or adding a new one) at the
+   same `startTime`, carrying over the source clip's current `inPoint`/
+   `outPoint`/`speed`/`volume` so the two start in sync, then turns the
+   source clip's `includeAudio` off so the sound isn't doubled. Notably
+   needed **no new audio file on disk** — unlike item 1, the export's audio
+   chain already reads directly from whichever asset a clip points to
+   regardless of what kind of track it's sitting on, so the new clip just
+   references the same video asset directly.
+3. **BUG — chroma key breaks on export — investigated, one real gap closed,
+   but Dan's exact original repro could not be reproduced this round.**
+   Actually diagnosed rather than guessed: built a battery of real-pipeline
+   tests (not just FFprobe stream checks) — two stacked video tracks, a
+   letterboxed/pillarboxed non-16:9 source with real pad borders, an overlay
+   track, 1.5× speed with fades, a Cross Dissolve transition between two
+   keyed clips, and realistic noisy/compressed footage with a moving
+   subject — each run through the real `VideoExportManager`/bundled FFmpeg
+   binary end-to-end, then actually decoding real frames back out and
+   reading pixel values (not just confirming the filter graph compiles),
+   which is exactly the rigor last round's verification skipped. Every one
+   of those scenarios composited correctly on this machine's exact bundled
+   FFmpeg build (6.1.1-essentials, gyan.dev) — none reproduced Dan's
+   reported opaque-black symptom. That said, the original diagnosis's core
+   suspicion — the FFmpeg `overlay` filter's default output format
+   (`format=yuv420`) is not alpha-carrying, so relying on its *default*
+   behavior for alpha correctness is implementation/version-defined rather
+   than guaranteed — is real and worth closing regardless of whether it was
+   provably *this* bug: `videoExportManager.ts`'s per-clip compositing loop
+   now explicitly passes `overlay=format=auto` and re-asserts
+   `format=yuva420p` after every overlay stage, so the running composite
+   stays alpha-safe end-to-end rather than depending on a specific FFmpeg
+   build's internal defaults. Also fixed in passing (a real, separate gap
+   found by code inspection, not a guess): `chromaKey.similarity`/`blend`
+   had zero validation anywhere — a value outside FFmpeg's accepted 1e-5..1
+   /0..1 ranges would fail the whole export; both the Clip Inspector's
+   fields (min/max) and `EditorManager.updateClip` (server-side clamp, the
+   layer that actually matters) now guard against that. **This is
+   deliberately not marked fully resolved** — see Technical Notes below for
+   what Dan should capture if it resurfaces, since a synthetic repro
+   couldn't reproduce it and his real footage/project is the one thing this
+   round didn't have access to.
+5. **Library relocation in Settings, with a real data migration — built,
+   nothing deferred.** New Settings → "Library Location" section shows the
+   current path and a "Move Library…" button; picking a folder moves
+   *every* existing project's real files there (`fs.rename`, falling back
+   to a recursive copy-then-delete-the-original when the destination is on
+   a different drive and a plain rename can't work) — new `electron/
+   libraryLocation.ts` (the small preference file recording the chosen
+   location, under Electron's userData folder) and `electron/
+   libraryRelocationManager.ts` (the actual move). `projectPaths.ts`'s
+   `projectsRoot()` is now async and reads that preference, so every
+   existing manager picks up the new location transparently with no other
+   code changes needed.
+6. **Export destination choice — built, nothing deferred.** The Export
+   dialog now has a "Save to" choice: the project's own `exports/` folder
+   (default — keeps showing up in Media Library) or "Choose a different
+   folder" (a real OS folder picker via a new `editor:chooseExportDestination`
+   IPC call), disabling the Export button until a folder is actually picked
+   in that mode. `VideoExportManager.exportMp4` takes an optional
+   `destinationDir` and writes there instead of the project's `exports/`
+   when given one.
+7. **Direct-manipulation editing on the Preview Player — built, nothing
+   deferred, addition not replacement.** A plain absolutely-positioned DOM
+   box now overlays the selected clip's on-canvas position/size on top of
+   the `<canvas>` (in `PreviewPlayer.tsx`) whenever that clip is the active
+   one at the current playhead: dragging the box's body moves the clip
+   (`transform.x/y`); dragging one of its four corner handles adjusts
+   `crop` instead — the on-screen box stays put and the handle changes
+   *which part of the source* fills it (a crop-tool model), rather than
+   also resizing the box itself. The Clip Inspector's numeric X/Y/Crop
+   fields still work exactly as before on the same underlying data — this
+   is a mouse-driven addition, not a new source of truth. **Caught and
+   fixed during this round's own UI testing** (not by Dan): the corner
+   handles were initially unclickable because `.preview-player`'s
+   `overflow: hidden` clipped them right where they sit, at the box's
+   edges — removed that rule (harmless; the canvas already fits exactly via
+   its own sizing rules, nothing needed clipping) once real Playwright
+   mouse-drag testing against the actual handles caught it, rather than
+   shipping it the way item 3 shipped broken last round.
+8. **Right-click context menu on a clip — built, nothing deferred.**
+   Right-clicking any clip on the timeline opens a small menu — Split at
+   Playhead (disabled when the playhead isn't inside the clip, same rule as
+   the Inspector's Split button), Duplicate (new `EditorManager.
+   duplicateClip`, placing the copy immediately after the original on the
+   same track with its own transition reset to none), Extract Audio to
+   Track (media clips only — item 2), and Delete.
+9. **Reverse and mirror clip properties — built, nothing deferred, both
+   preview and export support.** Two new per-clip boolean fields
+   (`Clip.reverse`/`Clip.mirror`, media clips only) with checkboxes in the
+   Clip Inspector. Export: `reverse` inserts FFmpeg's `reverse`/`areverse`
+   right after the clip's own trim (which is exactly why trim happens
+   first — buffering a shorter, already-trimmed clip rather than the whole
+   source); `mirror` inserts `hflip` after scaling. Preview: `mirror` is a
+   real, correct live preview (a canvas transform flip within the clip's
+   own box); `reverse` has **no live preview equivalent** and is a
+   documented simplification, same spirit as this file's existing
+   transition/chroma-key preview simplifications — there's no way to play
+   an HTML5 `<video>` backwards smoothly (negative `playbackRate` isn't
+   supported by browsers), so a reversed clip still previews forward while
+   exporting correctly reversed.
+10. **Playhead drag-precision improvements — built, using the recommended
+    default.** The timeline already had zoom controls (a px/second slider)
+    from Phase 6's original ship; new this round: the ruler now supports
+    drag-to-scrub (not just click-to-seek), and a small floating tooltip
+    with the exact time follows the cursor while dragging the playhead *or*
+    a clip's trim handle, disappearing the instant the drag ends — so
+    landing on an exact time no longer depends on pixel-perfect mouse
+    accuracy at whatever zoom level happens to be active.
+
+  **Verification status (all nine items):**
+  - Confirmed working on this machine: `npm run typecheck` and
+    `npm run build` both succeed (renderer + main process); `npm start`
+    launches a real window without error, same as every prior phase.
+  - Confirmed working on this machine, via a scripted integration test run
+    through the real Electron runtime (same pattern as every prior phase),
+    covering items 1, 2, 5, 6, 8, and 9 end-to-end against the real
+    `ProjectManager`/`EditorManager`/`VideoExportManager`/
+    `LibraryRelocationManager` code and the real bundled FFmpeg binary — 23
+    assertions, all passing: extracting a video asset's audio produced a
+    real audio-only file (FFprobe-confirmed no video stream); extracting a
+    timeline clip's audio correctly created a synced audio-track clip,
+    turned off the source clip's own audio, and the resulting export still
+    had a real audio stream; a custom export destination correctly wrote
+    the file there instead of the project's `exports/` folder;
+    `duplicateClip` placed a correct copy; **reverse and mirror were
+    verified with actual decoded pixel data**, not just that the export
+    succeeded — an asymmetric red-then-green test clip exported reversed
+    showed green early and red late (confirming genuine frame-order
+    reversal, not a no-op), and an asymmetric red/blue split-screen clip
+    exported mirrored showed blue on the left and red on the right; library
+    relocation was tested against a fully synthetic fake "old library"
+    built entirely under a scratch folder (never touching the real
+    Documents-based library) — confirmed the migrated file lands at the
+    new location, the old location is genuinely gone (a real move, not a
+    copy left behind), a second relocate-to-the-same-place is a safe no-op,
+    and the real preference is always restored to the default afterward
+    (wrapped in try/finally) regardless of outcome. **A real near-miss
+    during this pass, worth recording:** an earlier draft of this same test
+    ran `relocateLibrary` directly against the real default location to set
+    up its fixture, which — combined with this machine's OneDrive-redirected
+    Documents folder holding a locked file — triggered the copy-then-delete
+    fallback path and threw partway through deleting the original, before
+    the test's own cleanup could run. The real library folder was found
+    fully intact afterward (a `rename`, not a delete, is tried first, and
+    Node's `fs.rm` here never got past the one locked leftover test folder
+    from a *previous* session), but the test was still rewritten to build
+    an entirely synthetic fixture under the scratchpad instead, precisely
+    so a test of a destructive-by-design feature can never again touch
+    real user data even in a failure path — noted here rather than quietly
+    fixed and forgotten, since it's exactly the kind of thing this file's
+    "distinguish deferred vs. decided-against" habit exists to surface.
+  - **CONFIRMED (2026-09-13), UI-level click-through — driven by Claude via
+    a real Playwright session controlling the actual built Electron window
+    (`playwright`'s `_electron` launcher, same class of technique as every
+    prior phase's UI verification, not Dan's own hands):** created a
+    project via the real UI; seeded a video asset with a real audio track
+    directly on disk (mocking only the native file-picker dialog, same
+    long-standing technique). On the Assets tab: confirmed the new Extract
+    Audio button appears on the video asset's card, clicked it, and
+    confirmed a real new audio asset appeared. On the Editor tab: added the
+    seeded clip; checked Reverse and Mirror in the Inspector, reloaded the
+    whole app, reopened the project, and confirmed both were still checked
+    (real persistence); dragged the new preview overlay box on the
+    `<canvas>` and confirmed the Inspector's X field changed to match;
+    enabled Crop and dragged its bottom-right handle, confirming Crop W
+    changed (this is the exact interaction that caught the `overflow:
+    hidden` clipping bug above — it failed the first time this was run,
+    confirmed fixed on the second); dragged the ruler and confirmed the
+    live time tooltip appears mid-drag and disappears on release;
+    right-clicked a clip and confirmed the context menu shows all four
+    actions, that Duplicate actually added a clip, and that Extract Audio
+    to Track added a real clip on an audio track while switching the
+    original clip's "include audio" off. On the Export dialog: confirmed
+    the destination choice renders and that Export is correctly disabled
+    until a custom folder is chosen (didn't click "Browse…" itself, since
+    that opens a real OS dialog Playwright can't drive — the underlying
+    `exportMp4(destinationDir)` behavior is what the scripted test above
+    covers instead). On Settings: confirmed the new Library Location
+    section shows the current (default) path and a Move Library button
+    (didn't click it, same OS-dialog reason — the actual migration logic is
+    what the scripted test covers). 24 of 24 assertions passed. The test
+    project this pass created was cleaned up afterward; confirmed no
+    leftover folders from this session remain in the real library.
+  - **Not yet confirmed: Dan's own manual click-through in the live app** —
+    same pattern as every prior phase and as Phase 6's original round:
+    Phase 6 stays the current objective until Dan has clicked through all
+    nine of these himself (see Current Objective below for what that should
+    cover, especially item 3's chroma key, where his own real footage is
+    the one thing this round couldn't test against) — Phase 7 does not
+    start yet.
+  - **Still not done / not verified:** no automated test suite (same
+    caveat as every phase). Library relocation has no progress indicator
+    for a large library — it's a single awaited IPC call, so the Settings
+    UI just shows "Moving…" until it resolves; fine for a personal library,
+    revisit if it ever feels too opaque for a very large one. No undo for a
+    library relocation once it completes (the OS-trash-based reversibility
+    every other destructive action in this app has doesn't apply here,
+    since the whole point is moving the *live* data — mitigated by it being
+    a real `rename`/copy, never a delete-without-a-copy-first, so the data
+    itself is never at risk, just not one-click-undoable). The reverse/
+    mirror preview simplification (reverse doesn't preview backwards) is
+    documented above, not a defect.
+
 Current Objective (Focus Area)
 
 **Phase 3 is now considered complete.** The SFX/ElevenLabs typing bug
@@ -784,6 +1010,17 @@ see Completed Tasks above for the full record and the one open question it
 surfaced about the trim-drag gesture specifically). **Phase 7 does not
 start** until Dan has clicked through the Editor tab himself, per this
 project's normal confirm-then-advance pattern.
+
+**Update (2026-09-13): all nine numbered items below are now built** — see
+"Phase 6 continued" in Completed Tasks above for the full per-item record.
+Item 4 stays withdrawn (a misunderstanding, not a real gap — see its own
+entry below). Item 3 (chroma key on export) got real diagnostic work and one
+concrete hardening fix, but **could not be confirmed fixed** against Dan's
+own original repro this round — see that item's Completed Tasks entry and
+the note in Technical Notes below for what to capture if it resurfaces.
+**Phase 6 still stays the current objective** until Dan has clicked through
+all nine himself, per this project's normal pattern — the list below is kept
+as the original record of what was asked for, not rewritten.
 
 **Two more gaps identified (2026-09-13), added to Phase 6's scope before
 Phase 7 starts** — not originally specified anywhere, genuinely overlooked,
@@ -932,6 +1169,40 @@ Grok/Suno generation via API, and any "gigantic AI suite" scope expansion.
 
 Technical Notes / Blockers
 
+- **DEFERRED (not fixed, not decided against): chroma-key-on-export bug
+  (item 3) couldn't be reproduced this round, despite real effort.** See
+  "Phase 6 continued" in Completed Tasks above for everything that *was*
+  tested (multi-track stacking, letterboxing, transitions, speed+fades,
+  realistic noisy footage — all composited correctly against this machine's
+  exact bundled FFmpeg build) and the one concrete hardening fix that
+  shipped anyway (`overlay=format=auto` plus re-asserting `format=yuva420p`
+  end-to-end in `videoExportManager.ts`, since relying on the `overlay`
+  filter's non-alpha-carrying *default* format was real and worth closing
+  regardless of whether it was provably *this* bug). **If it resurfaces on
+  Dan's machine:** capture the exact repro this time — his project's canvas
+  resolution, the chroma key color/similarity/blend values, whether the
+  keyed clip is on a video or overlay track, whether a transition is
+  involved, and ideally the actual source clip (or a short trimmed copy of
+  it) rather than just a description, since a synthetic same-shape test
+  clip did not trigger it here. Worth checking Dan's installed
+  `ffmpeg-static` binary's exact reported version too (`ffmpeg -version`
+  via the app's bundled copy) in case it differs from the
+  6.1.1-essentials_build used for this round's testing.
+- **Safety lesson from testing item 5 (library relocation) — worth keeping
+  on record.** An early draft of this round's relocation test ran
+  `relocateLibrary` directly against the real default library location to
+  set up its own fixture; combined with this machine's OneDrive-redirected
+  Documents folder holding a locked leftover file (from an *earlier*
+  session's test cleanup, unrelated to this feature), the copy-then-delete
+  fallback path threw partway through deleting the original, before the
+  test's own cleanup ran. The real library was confirmed fully intact
+  afterward — a `rename` is tried first, and nothing was actually lost, just
+  copied and then not-fully-deleted from the original spot — but the test
+  was rewritten to build an entirely synthetic fixture under the scratchpad
+  instead, specifically so a test of a destructive-by-design feature can
+  never touch real user data even in a failure path. Apply the same caution
+  to any future test of the relocation feature (or anything else that
+  operates on the whole library root, not just one project).
 - **DEFERRED (backlog, not fixed, not decided against): intermittent
   SFX/ElevenLabs first-open typing bug.** Seen twice by Dan — text wouldn't
   enter a field the first time opening the "Add SFX" (or ElevenLabs "New

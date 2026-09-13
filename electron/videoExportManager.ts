@@ -156,6 +156,8 @@ export class VideoExportManager {
     projectId: string,
     outputName: string,
     onProgress: (progress: ExportProgress) => void,
+    /** Absolute folder to write into — defaults to the project's own `exports/` folder when omitted (see ExportDialog.tsx's destination choice). */
+    destinationDir?: string,
   ): Promise<{ outputPath: string }> {
     const dir = await requireProjectDir(projectId)
     const timeline = await this.editorManager.getTimeline(projectId)
@@ -246,8 +248,17 @@ export class VideoExportManager {
         const nextRunning = `ov${labelCounter.n++}`
         const start = unit.startTime.toFixed(3)
         const end = (unit.startTime + unit.duration).toFixed(3)
+        // `format=auto` (rather than the `overlay` filter's default `format=
+        // yuv420`, which is not alpha-carrying) plus re-asserting
+        // `format=yuva420p` afterward keeps the running composite alpha-safe
+        // end-to-end, so a chroma-keyed/faded clip's transparency is never
+        // implicitly at the mercy of the `overlay` filter's own default
+        // output format on whatever FFmpeg build happens to be resolved by
+        // `ffmpeg-static` — see this file's header comment and TODO.md's
+        // chroma-key-on-export item for why this needs to be explicit rather
+        // than relying on a filter default.
         filterLines.push(
-          `[${running}][${shifted}]overlay=x=0:y=0:enable='between(t,${start},${end})'[${nextRunning}]`,
+          `[${running}][${shifted}]overlay=x=0:y=0:format=auto:enable='between(t,${start},${end})',format=yuva420p[${nextRunning}]`,
         )
         running = nextRunning
       }
@@ -305,7 +316,7 @@ export class VideoExportManager {
 
     const filterComplex = filterLines.join(';\n')
 
-    const exportsDir = path.join(dir, 'exports')
+    const exportsDir = destinationDir || path.join(dir, 'exports')
     await fs.mkdir(exportsDir, { recursive: true })
     const safeName = outputName.trim().replace(/[\\/:*?"<>|]/g, '_') || `export-${randomUUID().slice(0, 8)}`
     const outputPath = path.join(exportsDir, safeName.endsWith('.mp4') ? safeName : `${safeName}.mp4`)
@@ -363,6 +374,13 @@ export class VideoExportManager {
       )
     }
 
+    // `reverse` needs the whole (already-trimmed) clip buffered in memory,
+    // which is exactly why it comes right after the trim above rather than
+    // on the full source — see this file's header comment on trim-first
+    // ordering. It regenerates PTS itself, so nothing downstream needs to
+    // account for having played the clip backwards.
+    if (clip.reverse) parts.push('reverse')
+
     if (clip.crop) {
       const c = clip.crop
       parts.push(`crop=${Math.round(c.width)}:${Math.round(c.height)}:${Math.round(c.x)}:${Math.round(c.y)}`)
@@ -370,6 +388,8 @@ export class VideoExportManager {
 
     const t = clip.transform
     parts.push(`scale=${Math.round(t.width)}:${Math.round(t.height)}`)
+
+    if (clip.mirror) parts.push('hflip')
 
     if (clip.chromaKey.enabled) {
       parts.push(`chromakey=color=${hex(clip.chromaKey.color)}:similarity=${clip.chromaKey.similarity}:blend=${clip.chromaKey.blend}`)
@@ -419,6 +439,7 @@ export class VideoExportManager {
   private buildAudioChain(clip: Clip, resolved: ResolvedInput, label: string): string {
     const parts: string[] = []
     parts.push(`atrim=start=${clip.inPoint.toFixed(3)}:end=${clip.outPoint.toFixed(3)}`, `asetpts=PTS-STARTPTS`)
+    if (clip.reverse) parts.push('areverse')
     if (Math.abs(clip.speed - 1) > 0.001) parts.push(atempoChain(clip.speed))
     parts.push(`volume=${clip.volume.toFixed(3)}`)
     if (clip.fadeInDuration > 0) parts.push(`afade=t=in:st=0:d=${clip.fadeInDuration.toFixed(3)}`)

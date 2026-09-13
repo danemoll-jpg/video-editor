@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Clip, Timeline as TimelineData, Track, TrackType } from '../api'
 
 // The multi-track editing surface: a time ruler, one lane per track (video
@@ -31,6 +31,8 @@ interface Props {
   onAddTrack: (type: TrackType) => void
   onUpdateTrack: (trackId: string, updates: { name?: string; muted?: boolean; hidden?: boolean }) => void
   onDeleteTrack: (trackId: string) => void
+  /** Right-click context menu actions (TODO.md item 8) — split at playhead, delete, duplicate, extract audio. */
+  onClipAction: (action: 'split' | 'delete' | 'duplicate' | 'extractAudio', clip: Clip) => void
   assetLabel: (clip: Clip) => string
 }
 
@@ -59,20 +61,64 @@ export default function Timeline({
   onAddTrack,
   onUpdateTrack,
   onDeleteTrack,
+  onClipAction,
   assetLabel,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const totalDuration = Math.max(30, ...timeline.clips.map((c) => c.startTime + c.duration + 5))
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; clip: Clip } | null>(null)
+  // Live time readout while dragging the playhead or a trim handle (TODO.md
+  // item 10) — exact positioning shouldn't depend on pixel-perfect mouse
+  // accuracy at whatever zoom level happens to be active, so this plus the
+  // existing zoom slider below are the two halves of that fix.
+  const [dragTooltip, setDragTooltip] = useState<{ x: number; y: number; time: number } | null>(null)
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = () => setContextMenu(null)
+    window.addEventListener('mousedown', close)
+    window.addEventListener('scroll', close, true)
+    return () => {
+      window.removeEventListener('mousedown', close)
+      window.removeEventListener('scroll', close, true)
+    }
+  }, [contextMenu])
+
+  function handleClipContextMenu(e: React.MouseEvent, clip: Clip) {
+    e.preventDefault()
+    e.stopPropagation()
+    onSelectClip(clip.id)
+    setContextMenu({ x: e.clientX, y: e.clientY, clip })
+  }
+
+  function runAction(action: 'split' | 'delete' | 'duplicate' | 'extractAudio') {
+    if (contextMenu) onClipAction(action, contextMenu.clip)
+    setContextMenu(null)
+  }
 
   const groups: { type: TrackType; tracks: Track[] }[] = (['video', 'audio', 'overlay'] as TrackType[]).map((type) => ({
     type,
     tracks: [...timeline.tracks.filter((t) => t.type === type)].sort((a, b) => a.order - b.order),
   }))
 
-  function handleRulerClick(e: React.MouseEvent<HTMLDivElement>) {
+  function startScrub(e: React.MouseEvent<HTMLDivElement>) {
     const rect = e.currentTarget.getBoundingClientRect()
-    const time = Math.max(0, (e.clientX - rect.left) / pxPerSecond)
-    onSeek(time)
+    const update = (clientX: number, clientY: number) => {
+      const time = Math.max(0, (clientX - rect.left) / pxPerSecond)
+      onSeek(time)
+      setDragTooltip({ x: clientX, y: clientY, time })
+    }
+    update(e.clientX, e.clientY)
+    function onMove(ev: MouseEvent) {
+      update(ev.clientX, ev.clientY)
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      setDragTooltip(null)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
   }
 
   function startDragMove(e: React.MouseEvent, clip: Clip) {
@@ -103,11 +149,13 @@ export default function Timeline({
       lastStart = newStart
       lastTrackId = newTrackId
       onPreviewMove(clip.id, newStart, newTrackId)
+      setDragTooltip({ x: ev.clientX, y: ev.clientY, time: newStart })
     }
     function onUp() {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
       onCommitMove(clip.id, lastStart, lastTrackId)
+      setDragTooltip(null)
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
@@ -124,11 +172,13 @@ export default function Timeline({
       const deltaSeconds = dx / pxPerSecond
       lastTime = edge === 'start' ? clip.startTime + deltaSeconds : clip.startTime + clip.duration + deltaSeconds
       onPreviewTrim(clip.id, edge, lastTime)
+      setDragTooltip({ x: ev.clientX, y: ev.clientY, time: lastTime })
     }
     function onUp() {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
       onCommitTrim(clip.id, edge, lastTime)
+      setDragTooltip(null)
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
@@ -158,7 +208,7 @@ export default function Timeline({
       </div>
 
       <div className="timeline__scroll" ref={scrollRef} onClick={() => onSelectClip(null)}>
-        <div className="timeline__ruler" style={{ width: totalDuration * pxPerSecond }} onClick={handleRulerClick}>
+        <div className="timeline__ruler" style={{ width: totalDuration * pxPerSecond }} onMouseDown={startScrub}>
           {Array.from({ length: Math.ceil(totalDuration) + 1 }).map((_, s) =>
             s % 1 === 0 ? (
               <div key={s} className="timeline__tick" style={{ left: s * pxPerSecond }}>
@@ -223,6 +273,7 @@ export default function Timeline({
                             style={{ left: clip.startTime * pxPerSecond, width: Math.max(4, clip.duration * pxPerSecond) }}
                             onMouseDown={(e) => startDragMove(e, clip)}
                             onClick={(e) => e.stopPropagation()}
+                            onContextMenu={(e) => handleClipContextMenu(e, clip)}
                             title={assetLabel(clip)}
                           >
                             <div
@@ -246,6 +297,35 @@ export default function Timeline({
             ),
         )}
       </div>
+
+      {dragTooltip && (
+        <div className="timeline__drag-tooltip" style={{ left: dragTooltip.x, top: dragTooltip.y - 28 }}>
+          {formatTime(Math.max(0, dragTooltip.time))}
+        </div>
+      )}
+
+      {contextMenu && (
+        <div className="context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} onMouseDown={(e) => e.stopPropagation()}>
+          <button
+            className="context-menu__item"
+            disabled={!(playhead > contextMenu.clip.startTime + 0.05 && playhead < contextMenu.clip.startTime + contextMenu.clip.duration - 0.05)}
+            onClick={() => runAction('split')}
+          >
+            ✂ Split at Playhead
+          </button>
+          <button className="context-menu__item" onClick={() => runAction('duplicate')}>
+            ⧉ Duplicate
+          </button>
+          {contextMenu.clip.kind === 'media' && (
+            <button className="context-menu__item" onClick={() => runAction('extractAudio')}>
+              🎵 Extract Audio to Track
+            </button>
+          )}
+          <button className="context-menu__item context-menu__item--danger" onClick={() => runAction('delete')}>
+            🗑 Delete
+          </button>
+        </div>
+      )}
     </div>
   )
 }

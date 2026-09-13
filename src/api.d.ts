@@ -26,6 +26,7 @@ import type { ShotStatus } from '../electron/shotStatus'
 import type { PromptLabKind } from '../electron/promptLabTypes'
 import type { AddClipInput, ClipUpdates } from '../electron/editorManager'
 import type { ExportProgress } from '../electron/videoExportManager'
+import type { LibraryLocation } from '../electron/libraryRelocationManager'
 import type {
   Clip,
   ClipKind,
@@ -71,6 +72,7 @@ export type {
   AddClipInput,
   ClipUpdates,
   ExportProgress,
+  LibraryLocation,
   Clip,
   ClipKind,
   ChromaKey,
@@ -104,6 +106,7 @@ declare global {
       listAssets(projectId: string): Promise<Asset[]>
       importAssets(projectId: string): Promise<Asset[]>
       deleteAsset(projectId: string, assetId: string): Promise<Asset[]>
+      extractAudioAsset(projectId: string, assetId: string): Promise<Asset[]>
 
       getIdea(projectId: string): Promise<Idea>
       saveIdea(projectId: string, content: string): Promise<Idea>
@@ -234,11 +237,17 @@ declare global {
       updateClip(projectId: string, clipId: string, updates: ClipUpdates): Promise<Timeline>
       deleteClip(projectId: string, clipId: string): Promise<Timeline>
       splitClip(projectId: string, clipId: string, atTime: number): Promise<Timeline>
+      duplicateClip(projectId: string, clipId: string): Promise<Timeline>
+      extractClipAudio(projectId: string, clipId: string): Promise<Timeline>
 
       getAssetMediaUrl(projectId: string, assetId: string): Promise<string>
 
-      exportTimeline(projectId: string, outputName: string): Promise<{ outputPath: string }>
+      chooseExportDestination(): Promise<string | null>
+      exportTimeline(projectId: string, outputName: string, destinationDir?: string): Promise<{ outputPath: string }>
       onExportProgress(callback: (progress: ExportProgress) => void): () => void
+
+      getLibraryLocation(): Promise<LibraryLocation>
+      relocateLibrary(): Promise<LibraryLocation | null>
     }
   }
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { LibraryLocation } from '../api'
 
 /**
  * Phase 4's Settings screen — currently just the Anthropic API key used by
@@ -14,6 +15,14 @@ export default function Settings() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+
+  const [library, setLibrary] = useState<LibraryLocation | null>(null)
+  const [relocating, setRelocating] = useState(false)
+  const [libraryError, setLibraryError] = useState<string | null>(null)
+
+  function refreshLibraryLocation() {
+    window.api.getLibraryLocation().then(setLibrary).catch((err) => setLibraryError(err instanceof Error ? err.message : String(err)))
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -32,10 +41,31 @@ export default function Settings() {
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
+    refreshLibraryLocation()
     return () => {
       cancelled = true
     }
   }, [])
+
+  async function handleRelocateLibrary() {
+    const confirmed = window.confirm(
+      "This moves every existing project's files to the folder you choose next. It can take a while for a large library — don't close the app while it's running. Continue?",
+    )
+    if (!confirmed) return
+    setRelocating(true)
+    setLibraryError(null)
+    try {
+      const result = await window.api.relocateLibrary()
+      if (result) {
+        setLibrary(result)
+        setMessage(`Library moved to ${result.baseDir}.`)
+      }
+    } catch (err) {
+      setLibraryError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRelocating(false)
+    }
+  }
 
   async function handleSave() {
     if (!keyInput.trim() || saving) return
@@ -71,6 +101,28 @@ export default function Settings() {
   return (
     <div className="settings-view">
       <h2>Settings</h2>
+
+      <section className="settings-section">
+        <h3>Library Location</h3>
+        <p className="muted">
+          Where every project's files live on disk — by default, buried inside your OS's Documents folder.
+          Moving it here migrates all existing projects to the new folder; nothing is left behind or duplicated.
+        </p>
+
+        {libraryError && <div className="error-banner">{libraryError}</div>}
+
+        <p>
+          Current location:{' '}
+          <code>{library ? library.baseDir : 'Loading…'}</code>
+          {library?.isDefault && <span className="muted"> (default)</span>}
+        </p>
+
+        <div className="inline-form">
+          <button className="btn btn--primary" disabled={relocating || !library} onClick={handleRelocateLibrary}>
+            {relocating ? 'Moving…' : 'Move Library…'}
+          </button>
+        </div>
+      </section>
 
       <section className="settings-section">
         <h3>Anthropic API Key</h3>

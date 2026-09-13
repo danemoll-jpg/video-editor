@@ -30,6 +30,7 @@ export default function ProjectView({ projectId, onBack }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  const [extractingAudioId, setExtractingAudioId] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('assets')
 
   async function refresh() {
@@ -71,6 +72,18 @@ export default function ProjectView({ projectId, onBack }: Props) {
       setAssets(await window.api.deleteAsset(projectId, assetId))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function handleExtractAudio(assetId: string) {
+    setExtractingAudioId(assetId)
+    try {
+      setAssets(await window.api.extractAudioAsset(projectId, assetId))
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setExtractingAudioId(null)
     }
   }
 
@@ -189,6 +202,16 @@ export default function ProjectView({ projectId, onBack }: Props) {
                         </div>
                         <div className="asset-card__meta">{formatBytes(asset.sizeBytes)}</div>
                         <div className="asset-card__meta">{formatDate(asset.importedAt)}</div>
+                        {asset.kind === 'video' && (
+                          <button
+                            className="asset-card__action"
+                            title="Extract this video's audio into a new standalone audio asset"
+                            disabled={extractingAudioId === asset.id}
+                            onClick={() => handleExtractAudio(asset.id)}
+                          >
+                            {extractingAudioId === asset.id ? '🎵 Extracting…' : '🎵 Extract Audio'}
+                          </button>
+                        )}
                         <button
                           className="asset-card__delete"
                           title="Delete asset"

@@ -24,6 +24,7 @@ import type { PromptLabKind } from './promptLabTypes'
 import type { AddClipInput, ClipUpdates } from './editorManager'
 import type { ExportProgress } from './videoExportManager'
 import type { ProjectSettings, Timeline, TrackType } from './editorTypes'
+import type { LibraryLocation } from './libraryRelocationManager'
 
 const api = {
   listProjects: (): Promise<ProjectSummary[]> => ipcRenderer.invoke('projects:list'),
@@ -36,6 +37,8 @@ const api = {
   importAssets: (projectId: string): Promise<Asset[]> => ipcRenderer.invoke('assets:import', projectId),
   deleteAsset: (projectId: string, assetId: string): Promise<Asset[]> =>
     ipcRenderer.invoke('assets:delete', projectId, assetId),
+  extractAudioAsset: (projectId: string, assetId: string): Promise<Asset[]> =>
+    ipcRenderer.invoke('assets:extractAudio', projectId, assetId),
 
   getIdea: (projectId: string): Promise<Idea> => ipcRenderer.invoke('idea:get', projectId),
   saveIdea: (projectId: string, content: string): Promise<Idea> =>
@@ -201,17 +204,25 @@ const api = {
     ipcRenderer.invoke('editor:clip:delete', projectId, clipId),
   splitClip: (projectId: string, clipId: string, atTime: number): Promise<Timeline> =>
     ipcRenderer.invoke('editor:clip:split', projectId, clipId, atTime),
+  duplicateClip: (projectId: string, clipId: string): Promise<Timeline> =>
+    ipcRenderer.invoke('editor:clip:duplicate', projectId, clipId),
+  extractClipAudio: (projectId: string, clipId: string): Promise<Timeline> =>
+    ipcRenderer.invoke('editor:clip:extractAudio', projectId, clipId),
 
   getAssetMediaUrl: (projectId: string, assetId: string): Promise<string> =>
     ipcRenderer.invoke('editor:getAssetMediaUrl', projectId, assetId),
 
-  exportTimeline: (projectId: string, outputName: string): Promise<{ outputPath: string }> =>
-    ipcRenderer.invoke('editor:export', projectId, outputName),
+  chooseExportDestination: (): Promise<string | null> => ipcRenderer.invoke('editor:chooseExportDestination'),
+  exportTimeline: (projectId: string, outputName: string, destinationDir?: string): Promise<{ outputPath: string }> =>
+    ipcRenderer.invoke('editor:export', projectId, outputName, destinationDir),
   onExportProgress: (callback: (progress: ExportProgress) => void): (() => void) => {
     const listener = (_e: Electron.IpcRendererEvent, progress: ExportProgress) => callback(progress)
     ipcRenderer.on('editor:exportProgress', listener)
     return () => ipcRenderer.removeListener('editor:exportProgress', listener)
   },
+
+  getLibraryLocation: (): Promise<LibraryLocation> => ipcRenderer.invoke('library:getLocation'),
+  relocateLibrary: (): Promise<LibraryLocation | null> => ipcRenderer.invoke('library:relocate'),
 }
 
 export type DanVideoStudioApi = typeof api

@@ -16,6 +16,7 @@ import { MediaLibraryManager } from './mediaLibraryManager'
 import { registerMediaProtocolHandler } from './mediaProtocol'
 import { EditorManager, type AddClipInput, type ClipUpdates } from './editorManager'
 import { VideoExportManager } from './videoExportManager'
+import { LibraryRelocationManager } from './libraryRelocationManager'
 import type { ProjectSettings, TrackType } from './editorTypes'
 import type { ShotStatus } from './shotStatus'
 import type { PromptLabKind } from './promptLabTypes'
@@ -37,6 +38,7 @@ const mediaLibraryManager = new MediaLibraryManager(
 )
 const editorManager = new EditorManager(projectManager)
 const videoExportManager = new VideoExportManager(projectManager, editorManager)
+const libraryRelocationManager = new LibraryRelocationManager()
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -102,6 +104,10 @@ ipcMain.handle('assets:import', async (_e, projectId: string) => {
 
 ipcMain.handle('assets:delete', (_e, projectId: string, assetId: string) =>
   projectManager.deleteAsset(projectId, assetId),
+)
+
+ipcMain.handle('assets:extractAudio', (_e, projectId: string, assetId: string) =>
+  projectManager.extractAudioAsset(projectId, assetId),
 )
 
 // --- IPC: idea ------------------------------------------------------------
@@ -351,14 +357,49 @@ ipcMain.handle('editor:clip:delete', (_e, projectId: string, clipId: string) =>
 ipcMain.handle('editor:clip:split', (_e, projectId: string, clipId: string, atTime: number) =>
   editorManager.splitClip(projectId, clipId, atTime),
 )
+ipcMain.handle('editor:clip:duplicate', (_e, projectId: string, clipId: string) =>
+  editorManager.duplicateClip(projectId, clipId),
+)
+ipcMain.handle('editor:clip:extractAudio', (_e, projectId: string, clipId: string) =>
+  editorManager.extractClipAudio(projectId, clipId),
+)
 
 ipcMain.handle('editor:getAssetMediaUrl', (_e, projectId: string, assetId: string) =>
   editorManager.getAssetMediaUrl(projectId, assetId),
 )
 
-ipcMain.handle('editor:export', async (event, projectId: string, outputName: string) => {
-  const sender = event.sender
-  return videoExportManager.exportMp4(projectId, outputName, (progress) => {
-    if (!sender.isDestroyed()) sender.send('editor:exportProgress', progress)
+ipcMain.handle('editor:chooseExportDestination', async () => {
+  if (!mainWindow) return null
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choose an export destination',
+    properties: ['openDirectory', 'createDirectory'],
   })
+  if (result.canceled || result.filePaths.length === 0) return null
+  return result.filePaths[0]
+})
+
+ipcMain.handle('editor:export', async (event, projectId: string, outputName: string, destinationDir?: string) => {
+  const sender = event.sender
+  return videoExportManager.exportMp4(
+    projectId,
+    outputName,
+    (progress) => {
+      if (!sender.isDestroyed()) sender.send('editor:exportProgress', progress)
+    },
+    destinationDir,
+  )
+})
+
+// --- IPC: Library location (Settings) ---------------------------------------
+
+ipcMain.handle('library:getLocation', () => libraryRelocationManager.getCurrentLocation())
+
+ipcMain.handle('library:relocate', async () => {
+  if (!mainWindow) return null
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Choose a new location for Dan's Video Studio's library",
+    properties: ['openDirectory', 'createDirectory'],
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+  return libraryRelocationManager.relocateLibrary(result.filePaths[0])
 })

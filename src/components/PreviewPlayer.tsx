@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react'
-import type { AssetKind, Clip, Timeline, Track } from '../api'
+import { useEffect, useRef, useState } from 'react'
+import type { AssetKind, Clip, Crop, Timeline, Track, Transform } from '../api'
 
 // The live preview compositor — draws every visible frame onto one <canvas>,
 // approximating the same layering rules videoExportManager.ts uses for the
@@ -30,7 +30,31 @@ interface Props {
   assetKindById: Record<string, AssetKind>
   onTimeUpdate: (time: number) => void
   onEnded: () => void
+  /** The clip selected in the Clip Inspector/Timeline, if any — drives the direct-manipulation overlay below. */
+  selectedClip: Clip | null
+  /** Called continuously while dragging on the preview, for instant visual feedback — no backend write. */
+  onPreviewClipEdit: (clipId: string, updates: { transform?: Transform; crop?: Crop | null }) => void
+  /** Called once when the drag ends — this is what actually persists. */
+  onCommitClipEdit: (clipId: string, updates: { transform?: Transform; crop?: Crop | null }) => void
 }
+
+interface OverlayRect {
+  left: number
+  top: number
+  width: number
+  height: number
+  /** Displayed canvas pixels per one canvas-intrinsic (project-resolution) pixel. */
+  scale: number
+}
+
+/** The source-pixel rect a clip's crop selects — the full source frame when `crop` is null. */
+function effectiveCrop(clip: Clip): Crop {
+  if (clip.crop) return clip.crop
+  return { x: 0, y: 0, width: clip.sourceWidth ?? clip.transform.width, height: clip.sourceHeight ?? clip.transform.height }
+}
+
+const CROP_HANDLES = ['tl', 'tr', 'bl', 'br'] as const
+type CropHandle = (typeof CROP_HANDLES)[number]
 
 interface Pool {
   video: Map<string, HTMLVideoElement>
@@ -67,8 +91,13 @@ export default function PreviewPlayer({
   assetKindById,
   onTimeUpdate,
   onEnded,
+  selectedClip,
+  onPreviewClipEdit,
+  onCommitClipEdit,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const stageRef = useRef<HTMLDivElement | null>(null)
+  const [overlayRect, setOverlayRect] = useState<OverlayRect | null>(null)
   const poolRef = useRef<Pool>({
     video: new Map(),
     audio: new Map(),
@@ -183,6 +212,21 @@ export default function PreviewPlayer({
     const t = clip.transform
     ctx.save()
     ctx.globalAlpha = alpha
+
+    // Mirror preview support (TODO.md item 9) — flip horizontally within the
+    // clip's own transform box, so it matches the real export's `hflip`.
+    // Reverse (the other half of item 9) has no live-preview equivalent here:
+    // there's no way to play an HTML5 <video> backwards smoothly (negative
+    // playbackRate isn't supported by browsers), so a reversed clip still
+    // previews forward — a documented simplification, same spirit as this
+    // file's existing transition/chroma-key ones. The export (the
+    // authoritative renderer, per this file's header comment) always plays
+    // it back correctly reversed via FFmpeg's `reverse`/`areverse`.
+    if (clip.mirror) {
+      ctx.translate(t.x + t.width, t.y)
+      ctx.scale(-1, 1)
+      ctx.translate(-t.x, -t.y)
+    }
 
     const doDraw = (target: CanvasImageSource) => {
       if (clip.crop) {
@@ -388,14 +432,143 @@ export default function PreviewPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // --- Direct-manipulation overlay (TODO.md item 7) --------------------
+  //
+  // A plain absolutely-positioned DOM box drawn over the canvas at the
+  // selected clip's on-canvas position/size, in *displayed* pixels — not
+  // drawn into the canvas itself, so it can use ordinary mouse events the
+  // same way Timeline.tsx's clip drag/trim handles do, rather than needing
+  // pixel-perfect hit-testing against canvas draw calls. Dragging the box's
+  // body moves the clip (`transform.x/y`); dragging a corner handle adjusts
+  // `crop` instead, keeping the box's on-screen position/size fixed and
+  // changing which part of the *source* fills it — a numeric-field addition,
+  // not a replacement (ClipInspector's fields still work on the same data).
+
+  function recomputeOverlay() {
+    const canvas = canvasRef.current
+    const stage = stageRef.current
+    if (!canvas || !stage || !selectedClip || selectedClip.kind !== 'media') {
+      setOverlayRect(null)
+      return
+    }
+    const active = playhead >= selectedClip.startTime && playhead < selectedClip.startTime + selectedClip.duration
+    if (!active) {
+      setOverlayRect(null)
+      return
+    }
+    const canvasRect = canvas.getBoundingClientRect()
+    const stageRect = stage.getBoundingClientRect()
+    if (canvasRect.width === 0) {
+      setOverlayRect(null)
+      return
+    }
+    const scale = canvasRect.width / timeline.projectSettings.width
+    const t = selectedClip.transform
+    setOverlayRect({
+      left: canvasRect.left - stageRect.left + t.x * scale,
+      top: canvasRect.top - stageRect.top + t.y * scale,
+      width: t.width * scale,
+      height: t.height * scale,
+      scale,
+    })
+  }
+
+  useEffect(() => {
+    recomputeOverlay()
+    window.addEventListener('resize', recomputeOverlay)
+    return () => window.removeEventListener('resize', recomputeOverlay)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClip, timeline.projectSettings.width, timeline.projectSettings.height, playhead])
+
+  function startMove(e: React.MouseEvent, clip: Clip, scale: number) {
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX
+    const startY = e.clientY
+    const origin = clip.transform
+    let last = origin
+    function onMove(ev: MouseEvent) {
+      const dx = (ev.clientX - startX) / scale
+      const dy = (ev.clientY - startY) / scale
+      last = { ...origin, x: Math.round(origin.x + dx), y: Math.round(origin.y + dy) }
+      onPreviewClipEdit(clip.id, { transform: last })
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      onCommitClipEdit(clip.id, { transform: last })
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  function startCropHandle(e: React.MouseEvent, clip: Clip, corner: CropHandle, scale: number) {
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX
+    const startY = e.clientY
+    const base = effectiveCrop(clip)
+    const t = clip.transform
+    const scaleX = t.width / base.width
+    const scaleY = t.height / base.height
+    const maxW = clip.sourceWidth ?? base.x + base.width
+    const maxH = clip.sourceHeight ?? base.y + base.height
+    const MIN_SIZE = 10
+    let last: Crop = base
+
+    function onMove(ev: MouseEvent) {
+      const dxSrc = (ev.clientX - startX) / scale / scaleX
+      const dySrc = (ev.clientY - startY) / scale / scaleY
+      let { x, y, width, height } = base
+      if (corner === 'tl' || corner === 'bl') {
+        const newWidth = Math.max(MIN_SIZE, width - dxSrc)
+        x = Math.max(0, x + (width - newWidth))
+        width = Math.min(newWidth, maxW - x)
+      } else {
+        width = Math.max(MIN_SIZE, Math.min(width + dxSrc, maxW - x))
+      }
+      if (corner === 'tl' || corner === 'tr') {
+        const newHeight = Math.max(MIN_SIZE, height - dySrc)
+        y = Math.max(0, y + (height - newHeight))
+        height = Math.min(newHeight, maxH - y)
+      } else {
+        height = Math.max(MIN_SIZE, Math.min(height + dySrc, maxH - y))
+      }
+      last = { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) }
+      onPreviewClipEdit(clip.id, { crop: last })
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      onCommitClipEdit(clip.id, { crop: last })
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
   return (
-    <div className="preview-player">
+    <div className="preview-player" ref={stageRef}>
       <canvas
         ref={canvasRef}
         className="preview-player__canvas"
         width={timeline.projectSettings.width}
         height={timeline.projectSettings.height}
       />
+      {overlayRect && selectedClip && (
+        <div
+          className="preview-player__overlay-box"
+          style={{ left: overlayRect.left, top: overlayRect.top, width: overlayRect.width, height: overlayRect.height }}
+          onMouseDown={(e) => startMove(e, selectedClip, overlayRect.scale)}
+        >
+          {CROP_HANDLES.map((corner) => (
+            <div
+              key={corner}
+              className={`preview-player__handle preview-player__handle--${corner}`}
+              onMouseDown={(e) => startCropHandle(e, selectedClip, corner, overlayRect.scale)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

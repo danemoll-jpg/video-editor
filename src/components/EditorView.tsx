@@ -111,6 +111,9 @@ export default function EditorView({ projectId, projectName, assets }: Props) {
             assetKindById={assetKindById}
             onTimeUpdate={setPlayhead}
             onEnded={() => setIsPlaying(false)}
+            selectedClip={selectedClip}
+            onPreviewClipEdit={(clipId, updates) => updateLocalClip(clipId, updates as Partial<Clip>)}
+            onCommitClipEdit={(clipId, updates) => refreshFrom(window.api.updateClip(projectId, clipId, updates))}
           />
           <div className="editor-view__transport">
             <button className="btn" onClick={() => setPlayhead(0)}>
@@ -213,6 +216,15 @@ export default function EditorView({ projectId, projectName, assets }: Props) {
         onDeleteTrack={(trackId) => {
           if (!window.confirm('Delete this track and all its clips?')) return
           refreshFrom(window.api.deleteTrack(projectId, trackId))
+        }}
+        onClipAction={(action, clip) => {
+          if (action === 'split') refreshFrom(window.api.splitClip(projectId, clip.id, playhead))
+          else if (action === 'duplicate') refreshFrom(window.api.duplicateClip(projectId, clip.id))
+          else if (action === 'extractAudio') refreshFrom(window.api.extractClipAudio(projectId, clip.id))
+          else if (action === 'delete') {
+            if (selectedClipId === clip.id) setSelectedClipId(null)
+            refreshFrom(window.api.deleteClip(projectId, clip.id))
+          }
         }}
         assetLabel={assetLabel}
       />

@@ -84,6 +84,8 @@ function normalizeClip(clip: Clip): Clip {
     crop: clip.crop ?? null,
     chromaKey: clip.chromaKey ?? { ...DEFAULT_CHROMA_KEY },
     transitionOut: clip.transitionOut ?? { ...DEFAULT_TRANSITION, type: 'none' },
+    reverse: clip.reverse ?? false,
+    mirror: clip.mirror ?? false,
   }
 }
 
@@ -133,6 +135,8 @@ export type ClipUpdates = Partial<
     | 'chromaKey'
     | 'transitionOut'
     | 'text'
+    | 'reverse'
+    | 'mirror'
   >
 >
 
@@ -252,6 +256,8 @@ export class EditorManager {
         chromaKey: { ...DEFAULT_CHROMA_KEY },
         transitionOut: { ...DEFAULT_TRANSITION, type: 'none' },
         text: defaultTextStyle(),
+        reverse: false,
+        mirror: false,
       }
     } else {
       if (!input.assetId) throw new Error('A media clip needs an assetId.')
@@ -307,6 +313,8 @@ export class EditorManager {
         chromaKey: { ...DEFAULT_CHROMA_KEY },
         transitionOut: { ...DEFAULT_TRANSITION, type: 'none' },
         text: null,
+        reverse: false,
+        mirror: false,
       }
     }
 
@@ -345,11 +353,31 @@ export class EditorManager {
     if (updates.includeAudio !== undefined) clip.includeAudio = updates.includeAudio
     if (updates.fadeInDuration !== undefined) clip.fadeInDuration = Math.max(0, updates.fadeInDuration)
     if (updates.fadeOutDuration !== undefined) clip.fadeOutDuration = Math.max(0, updates.fadeOutDuration)
-    if (updates.crop !== undefined) clip.crop = updates.crop
+    if (updates.crop !== undefined) {
+      // Guard against a degenerate crop rect (zero/negative size, e.g. from
+      // an over-eager drag on the preview's crop handles) — FFmpeg's `crop`
+      // filter rejects those outright and fails the whole export.
+      clip.crop = updates.crop
+        ? { ...updates.crop, width: Math.max(2, updates.crop.width), height: Math.max(2, updates.crop.height) }
+        : null
+    }
     if (updates.transform !== undefined) clip.transform = updates.transform
-    if (updates.chromaKey !== undefined) clip.chromaKey = updates.chromaKey
+    if (updates.chromaKey !== undefined) {
+      // FFmpeg's `chromakey` filter rejects `similarity` outside 1e-5..1
+      // outright (failing the whole export), and `blend` outside 0..1 is
+      // undefined behavior — clamp here the same way speed/volume are
+      // clamped above, rather than trusting whatever the Clip Inspector's
+      // plain number input sent.
+      clip.chromaKey = {
+        ...updates.chromaKey,
+        similarity: Math.min(1, Math.max(0.0001, updates.chromaKey.similarity)),
+        blend: Math.min(1, Math.max(0, updates.chromaKey.blend)),
+      }
+    }
     if (updates.transitionOut !== undefined) clip.transitionOut = updates.transitionOut
     if (updates.text !== undefined && clip.kind === 'text') clip.text = updates.text
+    if (updates.reverse !== undefined && clip.kind === 'media') clip.reverse = updates.reverse
+    if (updates.mirror !== undefined && clip.kind === 'media') clip.mirror = updates.mirror
 
     await this.writeTimeline(dir, timeline)
     await touchProject(dir)
@@ -361,6 +389,96 @@ export class EditorManager {
     const timeline = await this.readTimeline(dir)
     if (!timeline.clips.some((c) => c.id === clipId)) throw new Error('Clip not found.')
     timeline.clips = timeline.clips.filter((c) => c.id !== clipId)
+    await this.writeTimeline(dir, timeline)
+    await touchProject(dir)
+    return timeline
+  }
+
+  /** Copies a clip onto the same track, placed immediately after its own tail — for the clip's right-click "Duplicate" action. */
+  async duplicateClip(projectId: string, clipId: string): Promise<Timeline> {
+    const dir = await requireProjectDir(projectId)
+    const timeline = await this.readTimeline(dir)
+    const clip = timeline.clips.find((c) => c.id === clipId)
+    if (!clip) throw new Error('Clip not found.')
+    const copy: Clip = {
+      ...clip,
+      id: randomUUID(),
+      startTime: clip.startTime + clip.duration,
+      // A duplicate lands right after the original with nothing following it
+      // yet, so it can't inherit a transition into a clip that isn't there.
+      transitionOut: { ...DEFAULT_TRANSITION, type: 'none' },
+    }
+    timeline.clips.push(copy)
+    await this.writeTimeline(dir, timeline)
+    await touchProject(dir)
+    return timeline
+  }
+
+  /**
+   * Detaches a media clip's audio onto its own independent clip on an audio
+   * track, at the same timeline position and carrying over the source
+   * clip's current trim/speed (so the two start out in sync) — then turns
+   * off the source clip's own "include this clip's audio" so the sound
+   * isn't doubled. The new clip references the *same* asset (no new file is
+   * extracted, unlike `ProjectManager.extractAudioAsset` — the export's
+   * audio chain already reads directly from whichever asset a clip points
+   * at regardless of what kind of track it's on, so a second on-disk copy
+   * isn't needed here).
+   */
+  async extractClipAudio(projectId: string, clipId: string): Promise<Timeline> {
+    const dir = await requireProjectDir(projectId)
+    const timeline = await this.readTimeline(dir)
+    const clip = timeline.clips.find((c) => c.id === clipId)
+    if (!clip) throw new Error('Clip not found.')
+    if (clip.kind !== 'media' || !clip.assetId) throw new Error('Only a media clip can have its audio extracted.')
+
+    const asset = (await this.projectManager.listAssets(projectId)).find((a) => a.id === clip.assetId)
+    if (!asset) throw new Error('Asset not found.')
+    const absPath = await this.projectManager.getAssetAbsolutePath(projectId, asset.id)
+    const info = await probeMedia(absPath).catch(() => null)
+    if (!info?.hasAudio) throw new Error('This clip has no audio track to extract.')
+
+    // Reuse an audio track with nothing already occupying this time range;
+    // otherwise add a fresh one, same "always have somewhere to put it"
+    // approach as a manual drag onto a new track.
+    const overlaps = (a: Clip) => a.startTime < clip.startTime + clip.duration && clip.startTime < a.startTime + a.duration
+    let targetTrack = trackTypeOrders(timeline.tracks, 'audio').find(
+      (t) => !timeline.clips.some((c) => c.trackId === t.id && overlaps(c)),
+    )
+    if (!targetTrack) {
+      const siblingCount = trackTypeOrders(timeline.tracks, 'audio').length
+      targetTrack = { id: randomUUID(), type: 'audio', name: `Audio ${siblingCount + 1}`, order: siblingCount, muted: false, hidden: false }
+      timeline.tracks.push(targetTrack)
+    }
+
+    const { width, height } = timeline.projectSettings
+    const audioClip: Clip = {
+      id: randomUUID(),
+      trackId: targetTrack.id,
+      kind: 'media',
+      assetId: clip.assetId,
+      startTime: clip.startTime,
+      duration: clip.duration,
+      inPoint: clip.inPoint,
+      outPoint: clip.outPoint,
+      speed: clip.speed,
+      volume: clip.volume,
+      includeAudio: true,
+      fadeInDuration: 0,
+      fadeOutDuration: 0,
+      sourceWidth: null,
+      sourceHeight: null,
+      crop: null,
+      transform: containTransform(width, height, null, null),
+      chromaKey: { ...DEFAULT_CHROMA_KEY },
+      transitionOut: { ...DEFAULT_TRANSITION, type: 'none' },
+      text: null,
+      reverse: clip.reverse,
+      mirror: false,
+    }
+    timeline.clips.push(audioClip)
+    clip.includeAudio = false
+
     await this.writeTimeline(dir, timeline)
     await touchProject(dir)
     return timeline
