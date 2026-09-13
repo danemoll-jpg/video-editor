@@ -574,6 +574,183 @@ into one "done" statement:
     for different dimensions per source, and splitting them would be a
     bigger, un-asked-for change; revisit if it bothers Dan in practice.
 
+**Phase 6 — Video Editor (2026-09-13), built.** The actual editing layer,
+built on top of a new `editor/timeline.json` per project. All items in the
+phase's original scope were built — reporting each piece separately, as this
+project's habit is, rather than one rolled-up "done":
+
+1. **Timeline data model & engine (main process) — built, nothing deferred.**
+   New `electron/editorManager.ts` (`EditorManager` class) owns the Phase 6
+   data the same way every other manager owns its slice: multiple video/
+   audio/overlay tracks (each type keeps its own contiguous `order`), clips
+   with a timeline position/duration, source trim (`inPoint`/`outPoint`,
+   pre-speed source seconds — a media clip's on-timeline `duration` is
+   always *derived* from `(outPoint-inPoint)/speed`, not independently
+   settable, so it can never drift out of sync with the trim/speed that
+   produced it), speed, volume, fade in/out, a crop rect (source pixels,
+   applied before scale/position), a position/scale `transform`, an optional
+   chroma key, and a `transitionOut` describing how a clip blends into
+   whatever immediately follows it on the same track. A clip is either
+   `kind: 'media'` (pointing at a project asset) or `kind: 'text'` (a title/
+   overlay with no source file). Adding a media clip probes the real file
+   via a new `electron/mediaProbe.ts` (FFprobe) for its actual duration/
+   native width/height, and a new clip's `transform` defaults to an aspect-
+   ratio-preserving "contain" fit into the project canvas rather than a
+   distorting stretch. New `electron/editorTypes.ts` (zero Node imports,
+   same renderer-safe-import pattern as `shotStatus.ts`) holds the shared
+   shape plus the fixed transition-type list/labels and font list.
+2. **Media playback for the renderer — built, nothing deferred.** The
+   renderer previously never played any media at all (every earlier phase
+   only ever showed metadata about an asset). New `electron/mediaProtocol.ts`
+   registers a privileged, CORS-enabled `media://` protocol (via
+   `protocol.handle`, forwarding the request's `Range` header into
+   `net.fetch` against the real file so `<video>`/`<audio>` seeking works)
+   so the preview can safely draw video frames onto a `<canvas>` without the
+   canvas being "tainted" the way a plain `file://` source risks.
+3. **Timeline editing UI — built, nothing deferred.** New `src/components/
+   Timeline.tsx`: tracks grouped by type (Video/Audio/Overlay), a time
+   ruler with a click-to-seek playhead, add/rename/mute/hide/delete per
+   track, and clips as draggable/trimmable blocks — drag a clip's body to
+   move it in time (and onto another track of the same type), drag its left/
+   right edge to trim (shows a live preview while dragging, persists once on
+   mouse-up rather than on every pixel of movement). A "Split at Playhead"
+   button on the selected clip (`splitClip`) cuts it into two, correctly
+   carrying over trim math and moving the original `transitionOut` onto the
+   new tail half (the head half resets to no transition, since a transition
+   describes a clip's tail).
+4. **Preview player — built, with one documented simplification.** New
+   `src/components/PreviewPlayer.tsx`: a single `<canvas>` compositor that
+   draws every visible frame — video tracks bottom-to-top by order, then
+   overlay/text tracks on top of all of them — applying each clip's crop/
+   scale/position, opacity fade envelope, and (best-effort) chroma key via
+   per-pixel canvas processing, plus text rendering for title clips. Actual
+   playback (Play/Pause, scrubbing, per-clip volume with fades, track mute)
+   works against pooled `<video>`/`<audio>`/`<img>` elements fed by the new
+   `media://` protocol. **Documented simplification:** the preview shows a
+   transition as a hard cut to the later clip rather than an actual
+   crossfade/wipe — real blending only happens in the authoritative FFmpeg
+   export (item 6). Chroma-key pixel processing is wrapped in a try/catch
+   for the (browser-dependent) case where the canvas is considered tainted;
+   if so, that one clip just previews unkeyed while still exporting keyed
+   correctly.
+5. **Clip Inspector (properties panel) — built, nothing deferred.** New
+   `src/components/ClipInspector.tsx`: trim in/out, speed, volume, "include
+   this clip's audio," fade in/out, crop, position/scale, chroma key
+   (enable/color/similarity/blend), the transition into the next clip
+   (type + duration), and — for title clips — content/font/size/color/
+   align/background box. Every field writes back through the same
+   `updateClip` call the drag interactions use.
+6. **Basic transitions — built, nothing deferred, from the curated set
+   asked for.** Cross Dissolve, Fade to Black, Wipe Left, Wipe Right, and
+   Dissolve — implemented by detecting adjacent same-track clips where the
+   next clip's start overlaps the previous one's tail by exactly the
+   transition's duration, and folding them together with FFmpeg's `xfade`
+   (video) / `acrossfade` (audio) before placing the combined unit on the
+   timeline — chains of 3+ transitioned clips fold left-to-right
+   automatically.
+7. **MP4 export — built, nothing deferred.** New `electron/
+   videoExportManager.ts` builds one real FFmpeg `filter_complex` from the
+   whole timeline (every visual clip becomes its own full-canvas RGBA layer
+   with crop/scale/position/chroma-key/fade baked in, time-shifted and
+   layered via `overlay` with `enable='between(t,start,end)'`; every audio-
+   bearing clip similarly trimmed/speed-adjusted (`atempo`, chained for
+   ratios outside FFmpeg's 0.5–2.0 single-stage range)/volumed/faded, delayed
+   to its position, and mixed via `amix`) and runs it via the bundled
+   FFmpeg binary (new `ffmpeg-static`/`ffprobe-static` dependencies —
+   Dan needs no system FFmpeg install), reporting live progress back to the
+   renderer over an IPC event parsed from FFmpeg's `-progress pipe:1`
+   output. Writes into the project's `exports/` folder — which Phase 5's
+   Media Library already lists generically, so the exported file shows up
+   there with no extra work. New `src/components/ExportDialog.tsx` for the
+   filename/progress/result UI, reached via an "⬇ Export MP4" button.
+   Title/overlay text renders via FFmpeg's `drawtext` filter using
+   fontconfig family names (the bundled FFmpeg build has fontconfig
+   compiled in), not embedded font files.
+- **Explicitly not implemented this round (present in the data model for
+  forward-compatibility, but not wired up):** clip `rotation` — the
+  `Transform` type has always carried it, but no UI exposes it and the
+  export/preview both hard-code it to 0. Not asked for by name in the
+  original scope list ("cropping/scaling/positioning") and adding it
+  correctly (canvas size changes under rotation, needs its own crop/pad
+  math) was a meaningfully bigger, separate piece of work — flagged rather
+  than silently dropped.
+- **Out of scope for this phase, per the roadmap:** GIF/still-frame export
+  (that's Phase 7 — Export Tools, per TODO.md's Next Steps).
+
+  **Verification status:**
+  - Confirmed working on this machine: `npm run typecheck` and
+    `npm run build` both succeed (renderer + main process).
+  - Confirmed working on this machine: `npm start` launches a real window
+    titled "Dan's Video Studio," same as every prior phase.
+  - Confirmed working on this machine, via a scripted integration test run
+    through the real Electron runtime (same pattern as every prior phase,
+    exercising the exact `EditorManager`/`VideoExportManager` code the UI
+    calls): built a real timeline — two video tracks (one plain, one with a
+    1.5×-speed chroma-keyed clip and an explicit `transform`), an overlay
+    track (an image logo clip plus a title text clip), an audio track (a
+    song clip with volume/fades), and a Cross Dissolve transition between
+    two clips on the main video track — then split a clip and confirmed the
+    resulting two clips' trim math was exactly correct, confirmed a
+    `media://` URL is produced for playback, and ran a real export. FFprobe
+    on the resulting file confirmed: a real playable MP4 at the project's
+    exact configured resolution (1920×1080) with both a video and an audio
+    stream, at the exact expected total duration. This is the same class of
+    check as every prior phase's manager-level verification, but additionally
+    confirms FFmpeg itself accepts the generated filter graph and produces
+    correct real output, not just that the TypeScript compiles.
+  - **CONFIRMED (2026-09-13), UI-level click-through — driven by Claude via
+    a scripted Playwright pass against the real, built Electron window, not
+    Dan's own hands (same technique and same reason as every prior phase's
+    UI verification):** created a project via the actual UI; seeded a video
+    asset directly on disk with a hand-written `assets.json` entry (the same
+    "mock the native file picker" workaround used since Phase 3, since
+    Playwright can't drive an OS file dialog). Opened the new "Editor" tab;
+    added a second video track and an overlay track via their toolbar
+    buttons; added the seeded clip to Video 1 via the add-clip bar; clicked
+    the clip and confirmed the Clip Inspector opened with all expected
+    sections including Chroma Key; enabled chroma key and set volume to 0.5,
+    then did a full page reload and reopened the project — both changes were
+    still there, confirming real persistence, not just local UI state. Added
+    a title text clip on the overlay track. Clicked "Export MP4," ran a real
+    export from the UI's Export dialog, and confirmed the resulting file
+    actually exists on disk at the path the dialog reported. Separately,
+    drag interactions specifically: **moving** a clip by dragging its body
+    was confirmed working end-to-end (position change visible immediately,
+    and persisted correctly after a reload) using real OS-level simulated
+    mouse input. **Trimming** a clip by dragging its edge handle could not
+    be got to register via that same OS-level simulated mouse input in this
+    session's setup — an 8px-wide target apparently fell outside where the
+    externally-attached Playwright session's coordinate mapping landed,
+    while the much wider clip body (used for moving) was forgiving enough
+    to absorb the same offset; dispatching the equivalent real DOM mouse
+    events directly (bypassing OS-level input simulation) confirmed the
+    trim itself is correctly wired end-to-end (duration went from 5s to
+    exactly the expected 3.75s and persisted to disk) — so this reads as a
+    quirk of this session's test harness rather than an app defect, but it
+    means the drag-to-trim *gesture* specifically wasn't confirmed via the
+    most realistic simulated-mouse technique, unlike drag-to-move. Worth
+    Dan double-checking his own trim-by-dragging feel during his pass. All
+    test project folders this pass created were cleaned up afterward.
+  - **Not yet confirmed: Dan's own manual click-through in the live app.**
+    Same pattern as every prior phase: **Phase 6 stays the current
+    objective** until Dan has clicked through the Editor tab himself —
+    building a small real timeline, trimming/splitting/rearranging clips,
+    adding a title, trying chroma key on a real green-screen clip if he has
+    one, and exporting a real MP4 — Phase 7 does not start yet.
+  - **Still not done / not verified:** no automated test suite (same
+    caveat as every phase). No keyboard shortcuts, no snapping/magnetism
+    between clips while dragging, no multi-select, no undo/redo — all
+    reasonable follow-ups if the plain-mouse-drag/one-at-a-time editing
+    feels limiting in practice, none asked for by name. No waveform preview
+    on audio clips or thumbnail frames on video clips in the timeline (clips
+    render as plain labeled color blocks) — a nice-to-have, not asked for.
+    Rotation is unimplemented, per the note above. The preview's transition
+    hard-cut and best-effort chroma key are documented simplifications, per
+    item 4 above, not defects — the export is the authoritative renderer for
+    both. No packaging/installer changes were needed for the bundled FFmpeg
+    binaries since the app still isn't packaged (same as every prior
+    phase's note on this).
+
 Current Objective (Focus Area)
 
 **Phase 3 is now considered complete.** The SFX/ElevenLabs typing bug
@@ -595,13 +772,18 @@ by side, both ratable), and multi-linking SFX on a shot / multiple songs
 on a scene. Everything worked. This closes Phase 5 — see Completed Tasks
 above for the full built/verified record across both rounds.
 
-**Phase 6 — Video Editor, now current.** The actual editing layer:
-multiple video/audio tracks, trimming/splitting, rearranging clips,
-overlays/text/titles, fades/dissolves, volume control, green screen/chroma
-key, cropping/scaling/positioning, speed adjustment, basic transitions, MP4
-export. Deliberately not a CapCut feature clone — scoped to what this
-workflow actually needs. This is the largest, highest-effort phase in the
-roadmap.
+**Phase 6 — Video Editor is built, not yet confirmed — still the current
+objective.** Every item in the original scope — multiple video/audio
+tracks, trimming/splitting, rearranging clips, overlays/text/titles, fades/
+dissolves, volume control, green screen/chroma key, cropping/scaling/
+positioning, speed adjustment, basic transitions, MP4 export — was built
+this round (2026-09-13) and dev-tested (a scripted engine-level test through
+the real Electron runtime that produced and FFprobe-verified a real MP4,
+plus a Claude-driven Playwright UI click-through of the actual built app —
+see Completed Tasks above for the full record and the one open question it
+surfaced about the trim-drag gesture specifically). **Phase 7 does not
+start** until Dan has clicked through the Editor tab himself, per this
+project's normal confirm-then-advance pattern.
 
 Background & Key Decisions
 

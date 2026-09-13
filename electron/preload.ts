@@ -21,6 +21,9 @@ import type { AiMessage, AiAssistantContext } from './aiAssistantManager'
 import type { MediaLibraryEntry, ExportFile } from './mediaLibraryManager'
 import type { ShotStatus } from './shotStatus'
 import type { PromptLabKind } from './promptLabTypes'
+import type { AddClipInput, ClipUpdates } from './editorManager'
+import type { ExportProgress } from './videoExportManager'
+import type { ProjectSettings, Timeline, TrackType } from './editorTypes'
 
 const api = {
   listProjects: (): Promise<ProjectSummary[]> => ipcRenderer.invoke('projects:list'),
@@ -173,6 +176,42 @@ const api = {
   getMediaLibrary: (projectId: string): Promise<MediaLibraryEntry[]> =>
     ipcRenderer.invoke('media:getLibrary', projectId),
   listExports: (projectId: string): Promise<ExportFile[]> => ipcRenderer.invoke('media:listExports', projectId),
+
+  getTimeline: (projectId: string): Promise<Timeline> => ipcRenderer.invoke('editor:getTimeline', projectId),
+  updateProjectSettings: (projectId: string, updates: Partial<ProjectSettings>): Promise<Timeline> =>
+    ipcRenderer.invoke('editor:updateProjectSettings', projectId, updates),
+
+  addTrack: (projectId: string, type: TrackType, name?: string): Promise<Timeline> =>
+    ipcRenderer.invoke('editor:track:add', projectId, type, name),
+  updateTrack: (
+    projectId: string,
+    trackId: string,
+    updates: { name?: string; muted?: boolean; hidden?: boolean },
+  ): Promise<Timeline> => ipcRenderer.invoke('editor:track:update', projectId, trackId, updates),
+  deleteTrack: (projectId: string, trackId: string): Promise<Timeline> =>
+    ipcRenderer.invoke('editor:track:delete', projectId, trackId),
+  reorderTracks: (projectId: string, type: TrackType, orderedTrackIds: string[]): Promise<Timeline> =>
+    ipcRenderer.invoke('editor:track:reorder', projectId, type, orderedTrackIds),
+
+  addClip: (projectId: string, input: AddClipInput): Promise<Timeline> =>
+    ipcRenderer.invoke('editor:clip:add', projectId, input),
+  updateClip: (projectId: string, clipId: string, updates: ClipUpdates): Promise<Timeline> =>
+    ipcRenderer.invoke('editor:clip:update', projectId, clipId, updates),
+  deleteClip: (projectId: string, clipId: string): Promise<Timeline> =>
+    ipcRenderer.invoke('editor:clip:delete', projectId, clipId),
+  splitClip: (projectId: string, clipId: string, atTime: number): Promise<Timeline> =>
+    ipcRenderer.invoke('editor:clip:split', projectId, clipId, atTime),
+
+  getAssetMediaUrl: (projectId: string, assetId: string): Promise<string> =>
+    ipcRenderer.invoke('editor:getAssetMediaUrl', projectId, assetId),
+
+  exportTimeline: (projectId: string, outputName: string): Promise<{ outputPath: string }> =>
+    ipcRenderer.invoke('editor:export', projectId, outputName),
+  onExportProgress: (callback: (progress: ExportProgress) => void): (() => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, progress: ExportProgress) => callback(progress)
+    ipcRenderer.on('editor:exportProgress', listener)
+    return () => ipcRenderer.removeListener('editor:exportProgress', listener)
+  },
 }
 
 export type DanVideoStudioApi = typeof api

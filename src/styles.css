@@ -1025,3 +1025,392 @@ body {
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* Video Editor (Phase 6) */
+
+.editor-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.editor-view__main {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.editor-view__preview-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.preview-player {
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.preview-player__canvas {
+  max-width: 100%;
+  max-height: 60vh;
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.editor-view__transport {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.add-clip-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  flex-wrap: wrap;
+}
+
+.add-clip-bar select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+/* Clip inspector */
+
+.clip-inspector {
+  width: 300px;
+  flex-shrink: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 75vh;
+  overflow-y: auto;
+}
+
+.clip-inspector__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.clip-inspector__header h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.clip-inspector__row {
+  display: flex;
+  gap: 10px;
+}
+
+.clip-inspector__row > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.clip-inspector__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.clip-inspector__field input,
+.clip-inspector__field select,
+.clip-inspector__field textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.clip-inspector__field input[type='color'] {
+  padding: 2px;
+  height: 32px;
+}
+
+.clip-inspector__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.clip-inspector__hint {
+  font-size: 11px;
+}
+
+.clip-inspector__section {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.clip-inspector__section h4 {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+/* Timeline */
+
+.timeline {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.timeline__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.timeline__scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 360px;
+}
+
+.timeline__ruler {
+  position: relative;
+  height: 22px;
+  border-bottom: 1px solid var(--border);
+  margin-left: 140px;
+  cursor: pointer;
+}
+
+.timeline__tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-muted);
+  padding-left: 3px;
+}
+
+.timeline__playhead {
+  position: absolute;
+  top: 0;
+  bottom: -2000px;
+  width: 2px;
+  background: var(--danger);
+  z-index: 4;
+  pointer-events: none;
+}
+
+.timeline__group-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 6px 0 2px 140px;
+}
+
+.timeline__row {
+  display: flex;
+  align-items: stretch;
+}
+
+.timeline__track-header {
+  width: 140px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.timeline__track-name {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 12px;
+  padding: 2px;
+}
+
+.timeline__track-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.timeline__track-btn--active {
+  color: var(--danger);
+}
+
+.timeline__lane {
+  position: relative;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.timeline__clip {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  background: var(--accent);
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+  border: 1px solid var(--accent-hover);
+}
+
+.timeline__clip--text {
+  background: #a35bef;
+  border-color: #8a3fd6;
+}
+
+.timeline__clip--chroma {
+  background: #2e9e5b;
+  border-color: #227a45;
+}
+
+.timeline__clip--selected {
+  outline: 2px solid #fff;
+  outline-offset: -2px;
+}
+
+.timeline__clip-label {
+  font-size: 11px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 8px;
+  pointer-events: none;
+}
+
+.timeline__clip-transition {
+  color: #fff;
+  font-size: 11px;
+  padding-right: 4px;
+}
+
+.timeline__clip-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  cursor: ew-resize;
+  z-index: 2;
+}
+
+.timeline__clip-edge--start {
+  left: 0;
+}
+
+.timeline__clip-edge--end {
+  right: 0;
+}
+
+/* Export dialog */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.modal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  width: 420px;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.modal__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal__header h3 {
+  margin: 0;
+  flex: 1;
+}
+
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.export-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.export-progress__bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.export-progress__fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.export-progress code {
+  font-size: 11px;
+  word-break: break-all;
+}

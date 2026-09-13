@@ -156,6 +156,19 @@ export class ProjectManager {
     return this.readAssets(dir)
   }
 
+  /**
+   * Absolute on-disk path for one asset — added for Phase 6 (editorManager.ts/
+   * videoExportManager.ts need the real file to play/encode, not just the
+   * asset record). Every other manager only ever needed the relative record.
+   */
+  async getAssetAbsolutePath(projectId: string, assetId: string): Promise<string> {
+    const dir = await requireProjectDir(projectId)
+    const assets = await this.readAssets(dir)
+    const asset = assets.find((a) => a.id === assetId)
+    if (!asset) throw new Error('Asset not found.')
+    return path.join(dir, asset.relativePath)
+  }
+
   async importAssets(projectId: string, filePaths: string[]): Promise<Asset[]> {
     const dir = await requireProjectDir(projectId)
 

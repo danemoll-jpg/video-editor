@@ -24,6 +24,22 @@ import type { AiMessage, AiAssistantContext } from '../electron/aiAssistantManag
 import type { MediaLibraryEntry, MediaUsage, ExportFile } from '../electron/mediaLibraryManager'
 import type { ShotStatus } from '../electron/shotStatus'
 import type { PromptLabKind } from '../electron/promptLabTypes'
+import type { AddClipInput, ClipUpdates } from '../electron/editorManager'
+import type { ExportProgress } from '../electron/videoExportManager'
+import type {
+  Clip,
+  ClipKind,
+  ChromaKey,
+  Crop,
+  ProjectSettings,
+  Timeline,
+  Track,
+  TrackType,
+  Transform,
+  Transition,
+  TransitionType,
+  TextStyle,
+} from '../electron/editorTypes'
 
 export type {
   Asset,
@@ -52,6 +68,21 @@ export type {
   MediaLibraryEntry,
   MediaUsage,
   ExportFile,
+  AddClipInput,
+  ClipUpdates,
+  ExportProgress,
+  Clip,
+  ClipKind,
+  ChromaKey,
+  Crop,
+  ProjectSettings,
+  Timeline,
+  Track,
+  TrackType,
+  Transform,
+  Transition,
+  TransitionType,
+  TextStyle,
 }
 
 // Note: this file is a .d.ts (declarations only, no JS emitted), so it can
@@ -186,6 +217,28 @@ declare global {
 
       getMediaLibrary(projectId: string): Promise<MediaLibraryEntry[]>
       listExports(projectId: string): Promise<ExportFile[]>
+
+      getTimeline(projectId: string): Promise<Timeline>
+      updateProjectSettings(projectId: string, updates: Partial<ProjectSettings>): Promise<Timeline>
+
+      addTrack(projectId: string, type: TrackType, name?: string): Promise<Timeline>
+      updateTrack(
+        projectId: string,
+        trackId: string,
+        updates: { name?: string; muted?: boolean; hidden?: boolean },
+      ): Promise<Timeline>
+      deleteTrack(projectId: string, trackId: string): Promise<Timeline>
+      reorderTracks(projectId: string, type: TrackType, orderedTrackIds: string[]): Promise<Timeline>
+
+      addClip(projectId: string, input: AddClipInput): Promise<Timeline>
+      updateClip(projectId: string, clipId: string, updates: ClipUpdates): Promise<Timeline>
+      deleteClip(projectId: string, clipId: string): Promise<Timeline>
+      splitClip(projectId: string, clipId: string, atTime: number): Promise<Timeline>
+
+      getAssetMediaUrl(projectId: string, assetId: string): Promise<string>
+
+      exportTimeline(projectId: string, outputName: string): Promise<{ outputPath: string }>
+      onExportProgress(callback: (progress: ExportProgress) => void): () => void
     }
   }
 }

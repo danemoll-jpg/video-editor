@@ -6,6 +6,7 @@ import ScriptEditor from './ScriptEditor'
 import SceneList from './SceneList'
 import PromptLab from './PromptLab'
 import MediaLibrary from './MediaLibrary'
+import EditorView from './EditorView'
 
 interface Props {
   projectId: string
@@ -21,7 +22,7 @@ const KIND_LABELS: Record<AssetKind, string> = {
 
 const KIND_ORDER: AssetKind[] = ['video', 'image', 'audio', 'other']
 
-type Tab = 'assets' | 'idea' | 'script' | 'scenes' | 'promptlab' | 'media'
+type Tab = 'assets' | 'idea' | 'script' | 'scenes' | 'promptlab' | 'media' | 'editor'
 
 export default function ProjectView({ projectId, onBack }: Props) {
   const [project, setProject] = useState<ProjectSummary | null>(null)
@@ -149,6 +150,12 @@ export default function ProjectView({ projectId, onBack }: Props) {
         >
           Media Library
         </button>
+        <button
+          className={`tab-bar__tab ${tab === 'editor' ? 'tab-bar__tab--active' : ''}`}
+          onClick={() => setTab('editor')}
+        >
+          Editor
+        </button>
       </div>
 
       {tab === 'assets' && (
@@ -226,6 +233,12 @@ export default function ProjectView({ projectId, onBack }: Props) {
       {tab === 'media' && (
         <div className="tab-panel">
           <MediaLibrary projectId={projectId} />
+        </div>
+      )}
+
+      {tab === 'editor' && (
+        <div className="tab-panel">
+          <EditorView projectId={projectId} projectName={project.name} assets={assets} />
         </div>
       )}
     </div>

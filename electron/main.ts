@@ -13,6 +13,10 @@ import {
 import { SettingsManager } from './settingsManager'
 import { AiAssistantManager, type AiAssistantContext } from './aiAssistantManager'
 import { MediaLibraryManager } from './mediaLibraryManager'
+import { registerMediaProtocolHandler } from './mediaProtocol'
+import { EditorManager, type AddClipInput, type ClipUpdates } from './editorManager'
+import { VideoExportManager } from './videoExportManager'
+import type { ProjectSettings, TrackType } from './editorTypes'
 import type { ShotStatus } from './shotStatus'
 import type { PromptLabKind } from './promptLabTypes'
 
@@ -31,6 +35,8 @@ const mediaLibraryManager = new MediaLibraryManager(
   promptLabManager,
   sfxLibraryManager,
 )
+const editorManager = new EditorManager(projectManager)
+const videoExportManager = new VideoExportManager(projectManager, editorManager)
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -60,6 +66,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  registerMediaProtocolHandler()
   createWindow()
 
   app.on('activate', () => {
@@ -310,3 +317,48 @@ ipcMain.handle('ai:send', (_e, projectId: string, context: AiAssistantContext, t
 
 ipcMain.handle('media:getLibrary', (_e, projectId: string) => mediaLibraryManager.getLibrary(projectId))
 ipcMain.handle('media:listExports', (_e, projectId: string) => mediaLibraryManager.listExports(projectId))
+
+// --- IPC: Video Editor (Phase 6) --------------------------------------------
+
+ipcMain.handle('editor:getTimeline', (_e, projectId: string) => editorManager.getTimeline(projectId))
+
+ipcMain.handle('editor:updateProjectSettings', (_e, projectId: string, updates: Partial<ProjectSettings>) =>
+  editorManager.updateProjectSettings(projectId, updates),
+)
+
+ipcMain.handle('editor:track:add', (_e, projectId: string, type: TrackType, name?: string) =>
+  editorManager.addTrack(projectId, type, name),
+)
+ipcMain.handle(
+  'editor:track:update',
+  (_e, projectId: string, trackId: string, updates: { name?: string; muted?: boolean; hidden?: boolean }) =>
+    editorManager.updateTrack(projectId, trackId, updates),
+)
+ipcMain.handle('editor:track:delete', (_e, projectId: string, trackId: string) =>
+  editorManager.deleteTrack(projectId, trackId),
+)
+ipcMain.handle('editor:track:reorder', (_e, projectId: string, type: TrackType, orderedTrackIds: string[]) =>
+  editorManager.reorderTracks(projectId, type, orderedTrackIds),
+)
+
+ipcMain.handle('editor:clip:add', (_e, projectId: string, input: AddClipInput) => editorManager.addClip(projectId, input))
+ipcMain.handle('editor:clip:update', (_e, projectId: string, clipId: string, updates: ClipUpdates) =>
+  editorManager.updateClip(projectId, clipId, updates),
+)
+ipcMain.handle('editor:clip:delete', (_e, projectId: string, clipId: string) =>
+  editorManager.deleteClip(projectId, clipId),
+)
+ipcMain.handle('editor:clip:split', (_e, projectId: string, clipId: string, atTime: number) =>
+  editorManager.splitClip(projectId, clipId, atTime),
+)
+
+ipcMain.handle('editor:getAssetMediaUrl', (_e, projectId: string, assetId: string) =>
+  editorManager.getAssetMediaUrl(projectId, assetId),
+)
+
+ipcMain.handle('editor:export', async (event, projectId: string, outputName: string) => {
+  const sender = event.sender
+  return videoExportManager.exportMp4(projectId, outputName, (progress) => {
+    if (!sender.isDestroyed()) sender.send('editor:exportProgress', progress)
+  })
+})

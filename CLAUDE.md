@@ -11,7 +11,13 @@ imports the resulting files. **Exception, Phase 4:** direct Anthropic API
 calls for the in-app AI Assistant (idea/plot/script/prompt help) — see
 TODO.md's Completed Tasks. Called from the main process only; the API key
 (entered in Settings, stored via `safeStorage`) must never reach the
-renderer.
+renderer. **As of Phase 6:** FFmpeg/FFprobe are bundled via the
+`ffmpeg-static`/`ffprobe-static` npm packages (resolved in
+`electron/videoRuntime.ts`) — Dan needs no system FFmpeg install. The
+renderer plays media (for the editor's live preview) through a privileged
+`media://` protocol (`electron/mediaProtocol.ts`), never via a raw `file://`
+path, so canvas pixel access (chroma-key preview) isn't blocked by the
+browser treating it as cross-origin.
 
 ## Code Style & Architecture
 - **Process split:** `electron/` is the main process (TypeScript, compiled to
@@ -42,17 +48,33 @@ renderer.
   read-only Phase 5 aggregator with no JSON file of its own — it just
   cross-references the other three managers' data (which asset is linked
   from which shot/scene/prompt-entry/rating/SFX-entry) into one searchable
-  view, plus a plain listing of the `exports/` folder. All storage managers
-  share project-folder resolution and generic JSON read/write helpers from
-  `electron/projectPaths.ts` and `electron/fsUtils.ts` rather than
-  duplicating them. `electron/main.ts` just wires `ipcMain.handle`
-  calls to whichever manager owns that data. The renderer only ever calls
-  `window.api.*` methods (typed in `src/api.d.ts`, which mirrors the
-  preload's shape) and renders what comes back — no fs/path logic in
-  `src/`. The one deliberate exception: `electron/shotStatus.ts` (the fixed
-  shot-status sequence and labels), `electron/promptLabTypes.ts` (Grok/Suno
-  rating dimensions and lab labels), and `electron/sfxTypes.ts` (SFX source
-  labels and rating dimensions) have no Node/Electron imports, so the
+  view, plus a plain listing of the `exports/` folder. `electron/
+  editorManager.ts` (`EditorManager` class) is Phase 6's addition — it owns
+  the video-editor timeline (tracks/clips/project canvas settings; see that
+  file's header comment for the full shape) the same way every other
+  manager owns its slice, and `electron/videoExportManager.ts`
+  (`VideoExportManager` class) is the one place that actually shells out to
+  FFmpeg, turning a timeline into a real MP4 via a generated
+  `filter_complex` (see that file's header comment for the compositing
+  model — crop/scale/position/chroma-key/fades per clip, `xfade`/
+  `acrossfade` for transitions, `overlay`/`amix` to composite). Both are
+  supported by small single-purpose files: `electron/mediaProbe.ts`
+  (FFprobe metadata lookups), `electron/videoRuntime.ts` (resolves the
+  bundled FFmpeg/FFprobe binaries), and `electron/mediaProtocol.ts` (the
+  `media://` protocol the renderer's preview player uses to actually play a
+  file). All storage managers share project-folder resolution and generic
+  JSON read/write helpers from `electron/projectPaths.ts` and
+  `electron/fsUtils.ts` rather than duplicating them. `electron/main.ts`
+  just wires `ipcMain.handle` calls to whichever manager owns that data
+  (plus, for the export's progress bar, one `webContents.send` per progress
+  tick). The renderer only ever calls `window.api.*` methods (typed in
+  `src/api.d.ts`, which mirrors the preload's shape) and renders what comes
+  back — no fs/path logic in `src/`. The one deliberate exception:
+  `electron/shotStatus.ts` (the fixed shot-status sequence and labels),
+  `electron/promptLabTypes.ts` (Grok/Suno rating dimensions and lab
+  labels), `electron/sfxTypes.ts` (SFX source labels and rating
+  dimensions), and `electron/editorTypes.ts` (the timeline/clip/transition
+  shape and a few fixed lookup tables) have no Node/Electron imports, so the
   renderer imports them directly instead of duplicating that data — see
   each file's header comment.
 - **State management:** plain React `useState`/`useEffect` per component,
@@ -76,7 +98,11 @@ renderer.
   the new ones — `SfxLibraryManager` migrates their data into the unified
   files the first time it touches that project, then leaves the old files
   in place unread rather than deleting them (see that file's header
-  comment). `exports/` is still an empty placeholder, for Phase 6.
+  comment). `editor/timeline.json` (Phase 6 — the video-editor timeline:
+  tracks, clips, project canvas settings; see `EditorManager`'s header
+  comment) and `exports/` (no longer just a placeholder — Phase 6's MP4
+  export writes real files here, which Phase 5's Media Library already
+  lists generically).
 - **Styling:** one plain `src/styles.css` with CSS custom properties for the
   (currently dark-only) theme, plain class names — no CSS-in-JS or utility
   framework. Revisit if the UI grows past Phase 1's few screens.
@@ -115,8 +141,11 @@ universal ratings/prompt-search-term/version history/recipes regardless of
 source), and uncapped multi-linking (shots → multiple SFX, scenes →
 multiple songs). See TODO.md's Completed Tasks for the full record.
 
-Current objective is **Phase 6 (Video Editor)** — the actual editing
-layer: multiple video/audio tracks, trimming/splitting, rearranging clips,
-overlays/text/titles, fades/dissolves, volume control, green screen/chroma
-key, cropping/scaling/positioning, speed adjustment, basic transitions, MP4
-export. See TODO.md's Current Objective.
+**Phase 6 (Video Editor)** — multi-track editing (video/audio/overlay),
+trimming/splitting/rearranging clips, text/title overlays, fades,
+volume, chroma key, crop/scale/position, speed, a curated set of basic
+transitions, and real MP4 export via a bundled FFmpeg — is built and
+dev-tested (including a Claude-driven UI click-through of the actual app)
+but **not yet confirmed by Dan's own hands**, so it's still the current
+objective; Phase 7 doesn't start until that happens. See TODO.md's Current
+Objective and Completed Tasks for the full record.
