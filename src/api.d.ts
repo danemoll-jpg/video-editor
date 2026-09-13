@@ -12,7 +12,14 @@ import type {
   RatingInput,
   RatingUpdates,
 } from '../electron/promptLabManager'
-import type { SfxLibraryEntry, SfxLibraryEntryInput, SfxLibraryEntryUpdates } from '../electron/sfxLibraryManager'
+import type {
+  SfxEntry,
+  SfxEntryInput,
+  SfxEntryUpdates,
+  SfxRecipe,
+  SfxRatingInput,
+  SfxRatingUpdates,
+} from '../electron/sfxLibraryManager'
 import type { AiMessage, AiAssistantContext } from '../electron/aiAssistantManager'
 import type { MediaLibraryEntry, MediaUsage, ExportFile } from '../electron/mediaLibraryManager'
 import type { ShotStatus } from '../electron/shotStatus'
@@ -33,9 +40,12 @@ export type {
   Recipe,
   RatingInput,
   RatingUpdates,
-  SfxLibraryEntry,
-  SfxLibraryEntryInput,
-  SfxLibraryEntryUpdates,
+  SfxEntry,
+  SfxEntryInput,
+  SfxEntryUpdates,
+  SfxRecipe,
+  SfxRatingInput,
+  SfxRatingUpdates,
   PromptLabKind,
   AiMessage,
   AiAssistantContext,
@@ -75,7 +85,7 @@ declare global {
       updateScene(
         projectId: string,
         sceneId: string,
-        updates: { title?: string; description?: string },
+        updates: { title?: string; description?: string; linkedSongAssetIds?: string[] },
       ): Promise<Scene[]>
       deleteScene(projectId: string, sceneId: string): Promise<{ scenes: Scene[]; shots: Shot[] }>
       moveScene(projectId: string, sceneId: string, direction: 'up' | 'down'): Promise<Scene[]>
@@ -96,6 +106,7 @@ declare global {
           promptText?: string
           status?: ShotStatus
           linkedAssetId?: string | null
+          linkedSfxIds?: string[]
         },
       ): Promise<Shot[]>
       deleteShot(projectId: string, shotId: string): Promise<Shot[]>
@@ -143,10 +154,28 @@ declare global {
       ): Promise<Recipe[]>
       deleteRecipe(projectId: string, kind: PromptLabKind, recipeId: string): Promise<Recipe[]>
 
-      listSfxEntries(projectId: string): Promise<SfxLibraryEntry[]>
-      createSfxEntry(projectId: string, input: SfxLibraryEntryInput): Promise<SfxLibraryEntry[]>
-      updateSfxEntry(projectId: string, sfxId: string, updates: SfxLibraryEntryUpdates): Promise<SfxLibraryEntry[]>
-      deleteSfxEntry(projectId: string, sfxId: string): Promise<SfxLibraryEntry[]>
+      listSfxEntries(projectId: string): Promise<SfxEntry[]>
+      createSfxEntry(projectId: string, input: SfxEntryInput): Promise<SfxEntry[]>
+      updateSfxEntry(projectId: string, sfxId: string, updates: SfxEntryUpdates): Promise<SfxEntry[]>
+      deleteSfxEntry(projectId: string, sfxId: string): Promise<SfxEntry[]>
+
+      addSfxRating(projectId: string, sfxId: string, input: SfxRatingInput): Promise<SfxEntry[]>
+      updateSfxRating(
+        projectId: string,
+        sfxId: string,
+        ratingId: string,
+        updates: SfxRatingUpdates,
+      ): Promise<SfxEntry[]>
+      deleteSfxRating(projectId: string, sfxId: string, ratingId: string): Promise<SfxEntry[]>
+
+      listSfxRecipes(projectId: string): Promise<SfxRecipe[]>
+      promoteSfxRecipe(projectId: string, sfxId: string, name: string): Promise<SfxRecipe[]>
+      updateSfxRecipe(
+        projectId: string,
+        recipeId: string,
+        updates: { name?: string; promptText?: string; settings?: string; notes?: string; tags?: string[] },
+      ): Promise<SfxRecipe[]>
+      deleteSfxRecipe(projectId: string, recipeId: string): Promise<SfxRecipe[]>
 
       hasApiKey(): Promise<boolean>
       setApiKey(key: string): Promise<boolean>

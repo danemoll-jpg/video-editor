@@ -1,35 +1,32 @@
 import { useState } from 'react'
-import type { Asset, PromptEntry, PromptEntryUpdates, RatingInput } from '../api'
-import type { RatingDimension } from '../../electron/promptLabTypes'
+import type { Asset, SfxEntry, SfxEntryUpdates, SfxRatingInput } from '../api'
+import { SFX_RATING_DIMENSIONS, SFX_SOURCE_LABELS, SFX_PROMPT_PLACEHOLDER, type SfxSource } from '../../electron/sfxTypes'
 import { formatDate } from '../format'
 import { averageScores } from '../ratingUtils'
 import StarRating from './StarRating'
 
 interface Props {
-  entry: PromptEntry
-  dimensions: RatingDimension[]
-  showLyrics: boolean
+  entry: SfxEntry
   assets: Asset[]
-  parentEntry: PromptEntry | undefined
+  parentEntry: SfxEntry | undefined
   compareSelected: boolean
   compareDisabled: boolean
   onToggleCompare: () => void
-  onUpdate: (updates: PromptEntryUpdates) => void
+  onUpdate: (updates: SfxEntryUpdates) => void
   onDelete: () => void
-  onAddRating: (input: RatingInput) => void
+  onAddRating: (input: SfxRatingInput) => void
   onDeleteRating: (ratingId: string) => void
   onPromote: (name: string) => void
   onNewVersion: () => void
 }
 
-function emptyScores(dimensions: RatingDimension[]): Record<string, number> {
-  return Object.fromEntries(dimensions.map((d) => [d.key, 0]))
+function emptyScores(): Record<string, number> {
+  return Object.fromEntries(SFX_RATING_DIMENSIONS.map((d) => [d.key, 0]))
 }
 
-export default function PromptEntryCard({
+/** One entry in the unified SFX system — a free/licensed download or an ElevenLabs generation, both with the same prompt/version/rating/recipe shape (see electron/sfxLibraryManager.ts). Mirrors PromptEntryCard's structure. */
+export default function SfxEntryCard({
   entry,
-  dimensions,
-  showLyrics,
   assets,
   parentEntry,
   compareSelected,
@@ -44,44 +41,56 @@ export default function PromptEntryCard({
 }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [source, setSource] = useState<SfxSource>(entry.source)
+  const [name, setName] = useState(entry.name)
   const [promptText, setPromptText] = useState(entry.promptText)
-  const [lyrics, setLyrics] = useState(entry.lyrics)
+  const [tagsText, setTagsText] = useState(entry.tags.join(', '))
+  const [sourceUrl, setSourceUrl] = useState(entry.sourceUrl)
+  const [license, setLicense] = useState(entry.license)
+  const [attribution, setAttribution] = useState(entry.attribution)
   const [settings, setSettings] = useState(entry.settings)
   const [notes, setNotes] = useState(entry.notes)
-  const [tagsText, setTagsText] = useState(entry.tags.join(', '))
   const [linkedAssetId, setLinkedAssetId] = useState(entry.linkedAssetId ?? '')
   const [copied, setCopied] = useState(false)
   const [addingRating, setAddingRating] = useState(false)
   const [clipLabel, setClipLabel] = useState('')
   const [ratingAssetId, setRatingAssetId] = useState('')
   const [ratingNotes, setRatingNotes] = useState('')
-  const [scores, setScores] = useState<Record<string, number>>(() => emptyScores(dimensions))
+  const [scores, setScores] = useState<Record<string, number>>(emptyScores)
   const [promoting, setPromoting] = useState(false)
   const [recipeName, setRecipeName] = useState('')
 
-  const { overall } = averageScores(entry.ratings, dimensions.map((d) => d.key))
+  const { overall } = averageScores(entry.ratings, SFX_RATING_DIMENSIONS.map((d) => d.key))
 
   function handleSaveEdit() {
     onUpdate({
+      source,
+      name,
       promptText,
-      lyrics,
-      settings,
-      notes,
       tags: tagsText
         .split(',')
         .map((t) => t.trim())
         .filter(Boolean),
+      sourceUrl,
+      license,
+      attribution,
+      settings,
+      notes,
       linkedAssetId: linkedAssetId || null,
     })
     setEditing(false)
   }
 
   function handleCancelEdit() {
+    setSource(entry.source)
+    setName(entry.name)
     setPromptText(entry.promptText)
-    setLyrics(entry.lyrics)
+    setTagsText(entry.tags.join(', '))
+    setSourceUrl(entry.sourceUrl)
+    setLicense(entry.license)
+    setAttribution(entry.attribution)
     setSettings(entry.settings)
     setNotes(entry.notes)
-    setTagsText(entry.tags.join(', '))
     setLinkedAssetId(entry.linkedAssetId ?? '')
     setEditing(false)
   }
@@ -103,7 +112,7 @@ export default function PromptEntryCard({
     setClipLabel('')
     setRatingAssetId('')
     setRatingNotes('')
-    setScores(emptyScores(dimensions))
+    setScores(emptyScores())
     setAddingRating(false)
   }
 
@@ -128,9 +137,9 @@ export default function PromptEntryCard({
           {expanded ? '▼' : '▶'}
         </button>
         <div className="prompt-entry-card__summary" onClick={() => setExpanded(!expanded)}>
-          <span className="prompt-entry-card__prompt-preview">{entry.promptText}</span>
+          <span className="prompt-entry-card__prompt-preview">{entry.name}</span>
           <span className="muted prompt-entry-card__meta">
-            {formatDate(entry.createdAt)}
+            {SFX_SOURCE_LABELS[entry.source]} · {formatDate(entry.createdAt)}
             {parentEntry && ' · versioned from an earlier entry'}
             {entry.ratings.length > 0 &&
               ` · ${entry.ratings.length} clip${entry.ratings.length === 1 ? '' : 's'} rated`}
@@ -158,24 +167,56 @@ export default function PromptEntryCard({
           {editing ? (
             <div className="prompt-entry-card__edit-form">
               <label className="shot-card__field">
-                Prompt
-                <textarea value={promptText} onChange={(e) => setPromptText(e.target.value)} rows={3} />
+                Source
+                <select value={source} onChange={(e) => setSource(e.target.value as SfxSource)}>
+                  <option value="licensed">{SFX_SOURCE_LABELS.licensed}</option>
+                  <option value="elevenlabs">{SFX_SOURCE_LABELS.elevenlabs}</option>
+                </select>
               </label>
-              {showLyrics && (
-                <label className="shot-card__field">
-                  Lyrics
-                  <textarea value={lyrics} onChange={(e) => setLyrics(e.target.value)} rows={4} />
-                </label>
-              )}
               <label className="shot-card__field">
-                Settings
+                Name
+                <input value={name} onChange={(e) => setName(e.target.value)} />
+              </label>
+              <label className="shot-card__field">
+                Prompt / search term
                 <textarea
-                  value={settings}
-                  onChange={(e) => setSettings(e.target.value)}
-                  rows={2}
-                  placeholder="Model/voice/style params, e.g. instrumental off, style influence 60%"
+                  value={promptText}
+                  onChange={(e) => setPromptText(e.target.value)}
+                  rows={3}
+                  placeholder={SFX_PROMPT_PLACEHOLDER[source]}
                 />
               </label>
+              {source === 'elevenlabs' && (
+                <label className="shot-card__field">
+                  Settings
+                  <textarea
+                    value={settings}
+                    onChange={(e) => setSettings(e.target.value)}
+                    rows={2}
+                    placeholder="Model/voice/style params (optional)"
+                  />
+                </label>
+              )}
+              {source === 'licensed' && (
+                <>
+                  <label className="shot-card__field">
+                    Source URL
+                    <input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} />
+                  </label>
+                  <label className="shot-card__field">
+                    License
+                    <input
+                      value={license}
+                      onChange={(e) => setLicense(e.target.value)}
+                      placeholder="e.g. CC0, CC-BY 4.0, Pixabay License"
+                    />
+                  </label>
+                  <label className="shot-card__field">
+                    Attribution text
+                    <textarea value={attribution} onChange={(e) => setAttribution(e.target.value)} rows={2} />
+                  </label>
+                </>
+              )}
               <label className="shot-card__field">
                 Notes
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
@@ -185,14 +226,16 @@ export default function PromptEntryCard({
                 <input value={tagsText} onChange={(e) => setTagsText(e.target.value)} />
               </label>
               <label className="shot-card__field">
-                Linked asset
+                Linked audio asset
                 <select value={linkedAssetId} onChange={(e) => setLinkedAssetId(e.target.value)}>
                   <option value="">None</option>
-                  {assets.map((asset) => (
-                    <option key={asset.id} value={asset.id}>
-                      {asset.originalName}
-                    </option>
-                  ))}
+                  {assets
+                    .filter((a) => a.kind === 'audio')
+                    .map((asset) => (
+                      <option key={asset.id} value={asset.id}>
+                        {asset.originalName}
+                      </option>
+                    ))}
                 </select>
               </label>
               <div className="shot-card__field-actions">
@@ -207,19 +250,20 @@ export default function PromptEntryCard({
           ) : (
             <>
               <div className="prompt-entry-card__field-block">
-                <div className="muted field-label">Prompt</div>
-                <p className="prompt-entry-card__text">{entry.promptText}</p>
+                <div className="muted field-label">Prompt / search term</div>
+                <p className="prompt-entry-card__text">{entry.promptText || '(none)'}</p>
               </div>
-              {showLyrics && entry.lyrics && (
-                <div className="prompt-entry-card__field-block">
-                  <div className="muted field-label">Lyrics</div>
-                  <p className="prompt-entry-card__text">{entry.lyrics}</p>
-                </div>
-              )}
-              {entry.settings && (
+              {entry.source === 'elevenlabs' && entry.settings && (
                 <div className="prompt-entry-card__field-block">
                   <div className="muted field-label">Settings</div>
                   <p className="prompt-entry-card__text">{entry.settings}</p>
+                </div>
+              )}
+              {entry.source === 'licensed' && (
+                <div className="prompt-entry-card__field-block">
+                  <div className="muted field-label">License</div>
+                  <p className="prompt-entry-card__text">{entry.license || 'Not set'}</p>
+                  {entry.attribution && <p className="prompt-entry-card__text sfx-card__attribution">{entry.attribution}</p>}
                 </div>
               )}
               {entry.notes && (
@@ -229,7 +273,7 @@ export default function PromptEntryCard({
                 </div>
               )}
               <div className="prompt-entry-card__field-block">
-                <div className="muted field-label">Linked asset</div>
+                <div className="muted field-label">Linked audio asset</div>
                 <p className="prompt-entry-card__text">
                   {entry.linkedAssetId
                     ? assets.find((a) => a.id === entry.linkedAssetId)?.originalName ?? 'linked asset'
@@ -241,9 +285,11 @@ export default function PromptEntryCard({
 
           {!editing && (
             <div className="prompt-entry-card__actions">
-              <button className="btn" onClick={handleCopyPrompt}>
-                {copied ? 'Copied!' : 'Copy Prompt'}
-              </button>
+              {entry.promptText && (
+                <button className="btn" onClick={handleCopyPrompt}>
+                  {copied ? 'Copied!' : 'Copy Prompt'}
+                </button>
+              )}
               <button className="btn" onClick={onNewVersion}>
                 New Version From This
               </button>
@@ -262,7 +308,7 @@ export default function PromptEntryCard({
           {promoting && (
             <div className="inline-form">
               <input
-                placeholder="Recipe name, e.g. Reliable close-up dialogue shot"
+                placeholder="Recipe name, e.g. Reliable heavy door creak"
                 value={recipeName}
                 onChange={(e) => setRecipeName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSubmitPromote()}
@@ -304,7 +350,7 @@ export default function PromptEntryCard({
                   </button>
                 </div>
                 <div className="rating-row__scores">
-                  {dimensions.map((d) => (
+                  {SFX_RATING_DIMENSIONS.map((d) => (
                     <div key={d.key} className="rating-row__score">
                       <span className="muted">{d.label}</span>
                       <StarRating value={rating.scores[d.key] ?? 0} size="sm" />
@@ -324,7 +370,7 @@ export default function PromptEntryCard({
                   autoFocus
                 />
                 <div className="rating-row__scores">
-                  {dimensions.map((d) => (
+                  {SFX_RATING_DIMENSIONS.map((d) => (
                     <div key={d.key} className="rating-row__score">
                       <span className="muted">{d.label}</span>
                       <StarRating

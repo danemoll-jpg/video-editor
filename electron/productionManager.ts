@@ -26,7 +26,19 @@ import { SHOT_STATUSES, type ShotStatus } from './shotStatus'
 // (see electron/shotStatus.ts): Planned -> Prompt Ready -> Generated ->
 // Imported -> Edited -> Complete. `linkedAssetId` is an optional pointer
 // into the project's assets.json (projectManager.ts) once a
-// generated/imported file has been brought into the project as an asset.
+// generated/imported file has been brought into the project as an asset —
+// this is the shot's single primary generated clip.
+//
+// Phase 5 added a second, separate link on shots: `linkedSfxIds`, an
+// unordered list of ids into the unified SFX system
+// (electron/sfxLibraryManager.ts) — not capped at one, since a shot can
+// reasonably use several sound effects. It's deliberately its own field
+// rather than folded into `linkedAssetId`, which stays the shot's one
+// primary-clip link. Scenes got an analogous list, `linkedSongAssetIds` —
+// ids into the project's assets.json (audio assets), also not capped at
+// one, per Dan's example of wanting two different songs across one scene.
+// Both lists default to `[]` for shots/scenes read from before this field
+// existed (see `normalizeShot`/`normalizeScene` below).
 //
 // Within a scene's shots (and within the project's scenes), `order` is
 // always kept as a contiguous 0..n-1 permutation — every mutation either
@@ -48,6 +60,8 @@ export interface Scene {
   title: string
   description: string
   order: number
+  /** Ids into assets.json (audio assets) — the songs linked to this scene. Not capped at one. */
+  linkedSongAssetIds: string[]
   createdAt: string
   updatedAt: string
 }
@@ -61,6 +75,8 @@ export interface Shot {
   status: ShotStatus
   order: number
   linkedAssetId: string | null
+  /** Ids into the unified SFX system (sfxLibraryManager.ts) — the SFX linked to this shot. Not capped at one. */
+  linkedSfxIds: string[]
   createdAt: string
   updatedAt: string
 }
@@ -83,6 +99,16 @@ function shotsPath(dir: string): string {
 
 function sortByOrder<T extends { order: number }>(items: T[]): T[] {
   return [...items].sort((a, b) => a.order - b.order)
+}
+
+/** Backfills `linkedSongAssetIds` for scenes read from before that field existed. */
+function normalizeScene(scene: Scene): Scene {
+  return { ...scene, linkedSongAssetIds: scene.linkedSongAssetIds ?? [] }
+}
+
+/** Backfills `linkedSfxIds` for shots read from before that field existed. */
+function normalizeShot(shot: Shot): Shot {
+  return { ...shot, linkedSfxIds: shot.linkedSfxIds ?? [] }
 }
 
 /** Re-numbers `order` to a contiguous 0..n-1 by current relative order, in place. */
@@ -160,6 +186,7 @@ export class ProductionManager {
       title: trimmed,
       description,
       order: scenes.length,
+      linkedSongAssetIds: [],
       createdAt: now,
       updatedAt: now,
     })
@@ -171,7 +198,7 @@ export class ProductionManager {
   async updateScene(
     projectId: string,
     sceneId: string,
-    updates: { title?: string; description?: string },
+    updates: { title?: string; description?: string; linkedSongAssetIds?: string[] },
   ): Promise<Scene[]> {
     const dir = await requireProjectDir(projectId)
     const scenes = await this.readScenes(dir)
@@ -184,6 +211,7 @@ export class ProductionManager {
       scene.title = trimmed
     }
     if (updates.description !== undefined) scene.description = updates.description
+    if (updates.linkedSongAssetIds !== undefined) scene.linkedSongAssetIds = updates.linkedSongAssetIds
     scene.updatedAt = new Date().toISOString()
 
     await this.writeScenes(dir, scenes)
@@ -216,7 +244,7 @@ export class ProductionManager {
   }
 
   private async readScenes(dir: string): Promise<Scene[]> {
-    return readJsonFile<Scene[]>(scenesPath(dir), [])
+    return (await readJsonFile<Scene[]>(scenesPath(dir), [])).map(normalizeScene)
   }
 
   private async writeScenes(dir: string, scenes: Scene[]): Promise<void> {
@@ -252,6 +280,7 @@ export class ProductionManager {
       status: 'planned',
       order: siblingCount,
       linkedAssetId: null,
+      linkedSfxIds: [],
       createdAt: now,
       updatedAt: now,
     })
@@ -269,6 +298,7 @@ export class ProductionManager {
       promptText?: string
       status?: ShotStatus
       linkedAssetId?: string | null
+      linkedSfxIds?: string[]
     },
   ): Promise<Shot[]> {
     const dir = await requireProjectDir(projectId)
@@ -288,6 +318,7 @@ export class ProductionManager {
       shot.status = updates.status
     }
     if (updates.linkedAssetId !== undefined) shot.linkedAssetId = updates.linkedAssetId
+    if (updates.linkedSfxIds !== undefined) shot.linkedSfxIds = updates.linkedSfxIds
     shot.updatedAt = new Date().toISOString()
 
     await this.writeShots(dir, shots)
@@ -325,7 +356,7 @@ export class ProductionManager {
   }
 
   private async readShots(dir: string): Promise<Shot[]> {
-    return readJsonFile<Shot[]>(shotsPath(dir), [])
+    return (await readJsonFile<Shot[]>(shotsPath(dir), [])).map(normalizeShot)
   }
 
   private async writeShots(dir: string, shots: Shot[]): Promise<void> {

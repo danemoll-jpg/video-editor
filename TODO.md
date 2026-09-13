@@ -441,6 +441,139 @@ fix folded in alongside it, per Dan's call — see Current Objective below)*.
     `exports/` — this phase only added the listing, not export capability
     itself.
 
+**Phase 5 continued — the three gaps Dan's click-through surfaced (2026-09-12),
+built.** Reporting each of the three separately, as asked — none rolled up
+into one "done" statement:
+
+1. **Asset-linking on Grok/Suno prompt entries — built, nothing deferred.**
+   The data model (`PromptEntry.linkedAssetId`) and the manager/IPC layer
+   already supported this from Phase 3; the gap was entirely in the UI, which
+   never exposed a control for it. Fixed once in the shared
+   `PromptLabPanel.tsx`/`PromptEntryCard.tsx` (used identically by both Grok
+   and Suno, per the shared-component architecture), so it's one fix
+   covering both labs, not two: the "+ New Prompt" form gained a "Linked
+   asset" dropdown, and each entry's expanded/edit view now shows and can
+   change its linked asset the same way a shot's linked asset already
+   worked. (ElevenLabs isn't a separate prompt-lab kind anymore as of item 2
+   below, but its entries get this for free too, being part of the same
+   unified SFX system now.)
+2. **SFX library + ElevenLabs merged into one unified SFX system — built,
+   nothing deferred, including the data migration.** New shape in
+   `electron/sfxLibraryManager.ts` (still that file/class — this is an
+   evolution of the existing SFX-library manager, not a new subsystem):
+   every `SfxEntry` has a `source` (`licensed` or `elevenlabs`) and,
+   regardless of source, the same generic "Prompt / search term" field
+   (`promptText` — labeled generically in the UI, not as an AI-only
+   concept), version history (`parentId` chain + "New Version From This"),
+   per-clip ratings (the old ElevenLabs Lab's four dimensions — realism,
+   timing/sync, audio quality, prompt obedience — now scoreable on a
+   free/licensed download too), and recipe-promotion. License/attribution/
+   source-URL fields stay meaningful mainly for `licensed` entries and the
+   generation-settings field mainly for `elevenlabs` ones, shown
+   conditionally in the form/card but present on every entry rather than a
+   split shape. New `electron/sfxTypes.ts` (source labels + rating
+   dimensions, zero Node imports, same renderer-safe pattern as
+   `promptLabTypes.ts`). Renderer: old `SfxLibraryPanel.tsx` replaced by
+   `SfxPanel.tsx` (+ new `SfxEntryCard.tsx`), reusing `RecipeCard.tsx` and
+   `VersionCompare.tsx` (both generalized to a structural shape so Grok/Suno
+   and the unified SFX system share them rather than duplicating). The old
+   "ElevenLabs SFX Lab" sub-tab under Prompt Lab is gone; Prompt Lab's
+   sub-tabs are now Grok / Suno / SFX. `PromptLabKind` narrowed to
+   `'grok' | 'suno'` — ElevenLabs is a `source` value in the SFX system now,
+   not a prompt-lab kind (its own AI Assistant context, `'elevenlabs'`,
+   stays independent of that type so the SFX panel keeps its assistant).
+   **Data migration**, run automatically the first time a project's SFX data
+   is touched after this change (`SfxLibraryManager.ensureMigrated`): reads
+   the old `promptlab/sfxLibrary.json` and `elevenlabsPrompts.json`/
+   `elevenlabsRecipes.json` if present, converts each into the unified
+   shape (licensed entries keep their name/tags/license/attribution/linked
+   asset; ElevenLabs entries keep their prompt text/settings/notes/tags/
+   ratings/version chain), and writes the result to the new
+   `sfxEntries.json`/`sfxRecipes.json` — nothing is reset or discarded, and
+   the old files are left in place afterward (unread from then on) rather
+   than deleted. Ordering changed from the old library's alphabetical-by-
+   name to newest-first, matching every other prompt-lab list, since the
+   merge makes this a versioned history now rather than a flat tagged list.
+3. **Shots link multiple SFX; scenes link multiple songs — built, nothing
+   deferred, neither capped at one.** `Shot` gained `linkedSfxIds: string[]`
+   (ids into the unified SFX system) as a field separate from its existing
+   `linkedAssetId`, which stays exactly as it was — the shot's one primary
+   generated-clip link. `Scene` gained `linkedSongAssetIds: string[]` (ids
+   into the project's audio assets) — scenes previously had no asset-linking
+   at all. Both are plain checkbox lists in `ShotCard.tsx`/`SceneCard.tsx`
+   (new `.checkbox-list` styling), toggling membership in the array via the
+   existing `updateShot`/`updateScene` IPC calls (widened to accept the new
+   fields). Reading a scene/shot written before this change defaults the
+   new field to `[]` (`normalizeScene`/`normalizeShot` in
+   `productionManager.ts`) rather than throwing on the missing key.
+   `MediaLibraryManager` was extended to cross-reference both new link types
+   too (a `sceneSong` usage on the linked song asset, a `shotSfx` usage on
+   the asset behind a shot-linked SFX entry) — otherwise Phase 5's Media
+   Library would have grown a second "can't see where this is used" gap,
+   which was the whole complaint that opened this round.
+
+  **Verification status (all three items):**
+  - Confirmed working on this machine: `npm run typecheck` and
+    `npm run build` both succeed (renderer + main process).
+  - Confirmed working on this machine, via a scripted integration test run
+    through the real Electron runtime (same pattern as every prior phase):
+    created a project; seeded legacy `sfxLibrary.json`/`elevenlabsPrompts.json`/
+    `elevenlabsRecipes.json` files by hand to simulate a pre-merge project,
+    then confirmed the migration produces exactly the expected two unified
+    entries with every field mapped correctly (source, license, prompt
+    text, the migrated rating, the migrated recipe) and doesn't re-run or
+    duplicate on a second read; created new licensed and ElevenLabs-sourced
+    SFX entries and confirmed ratings, recipe-promotion, and version
+    history (parentId chain, including parentId clearing on delete) all
+    work on a licensed entry, not just an ElevenLabs one; created a scene
+    and shot and confirmed both can link two songs/two SFX respectively (not
+    capped at one) while the shot's separate primary-clip link kept working
+    independently; hand-wrote a legacy scene/shot missing the new fields
+    and confirmed reading them back defaults to `[]` instead of throwing;
+    confirmed `MediaLibraryManager.getLibrary()` surfaces both new usage
+    types correctly. Also exercised the Grok prompt-entry asset-linking
+    manager calls (create/update/clear a `linkedAssetId`) directly. Cleaned
+    up (trashed) the test project afterward.
+  - **CONFIRMED (2026-09-12), UI-level click-through — but driven by Claude
+    via a scripted Playwright pass against the real, built Electron window,
+    not Dan's own hands** (same technique and same reason as every prior
+    phase's UI verification): created a project via the actual UI, imported
+    a video asset, a song audio asset, and an SFX audio asset (mocking only
+    the native file-picker dialog). On Prompt Lab → Grok: opened "+ New
+    Prompt," confirmed the new "Linked asset" dropdown is present, linked
+    the new entry to the video asset, and confirmed the saved entry's
+    expanded view shows that linked asset. On the new SFX tab: confirmed
+    the tab's copy reflects the unified system; created a licensed entry
+    (name, "Prompt / search term," license, linked audio asset) and a
+    separate ElevenLabs-sourced entry in the same list, confirmed the
+    ElevenLabs entry shows its source label; rated a clip and promoted a
+    recipe on the *licensed* entry specifically, confirming ratings/recipes
+    aren't ElevenLabs-only. On Scenes & Shots: added a scene, checked a
+    "Linked songs" checkbox (confirmed it lands on `checked` once the
+    async round-trip settles — an SFX-panel-style controlled checkbox has a
+    brief window where a bare Playwright `.check()` assertion samples it
+    mid-round-trip and misreads that as a bug; re-verified with an explicit
+    settle delay, which is what a human clicking it would experience as a
+    normal, instant-feeling toggle); added a shot, checked a "Linked SFX"
+    checkbox for it the same way, and confirmed its separate "Linked asset"
+    (primary clip) dropdown still works independently. Opened Media Library
+    and confirmed the linked song asset shows a "Scene 1" usage and the
+    linked SFX's underlying audio asset shows a "Shot 1" usage. All 20
+    assertions in this pass succeeded; the four throwaway test project
+    folders it created were cleaned up (moved to the Recycle Bin)
+    afterward.
+  - **Not yet confirmed: Dan's own manual click-through in the live app.**
+    Same pattern as every prior phase and as Phase 5's first round above:
+    **Phase 5 stays the current objective** until Dan has clicked through
+    all three of these himself — Phase 6 does not start yet.
+  - **Still not done / not verified:** no automated test suite (same
+    caveat as every phase). The unified SFX system's rating dimensions
+    weren't reconsidered for whether they all make sense on a plain
+    downloaded sound (e.g. "prompt obedience" reads oddly for something
+    that wasn't generated from a prompt) — kept as-is since nothing asked
+    for different dimensions per source, and splitting them would be a
+    bigger, un-asked-for change; revisit if it bothers Dan in practice.
+
 Current Objective (Focus Area)
 
 **Phase 3 is now considered complete.** The SFX/ElevenLabs typing bug
@@ -455,47 +588,17 @@ path himself with his own Anthropic key entered in Settings: prompts
 worked well. This closes the one item that was keeping Phase 4 open (see
 Completed Tasks above for everything confirmed before this).
 
-**Phase 5 — Media Management, partially confirmed (2026-09-12), scope
-expanded** *(originally Phase 4)*. The Media Library tab itself is
-confirmed by Dan: search, kind filter, "Unused only" checkbox, an unlinked
-asset showing "not used anywhere yet," and the AI Assistant staying pinned
-while scrolling all work as built. **Not yet confirmed / found to be
-missing** during that same pass: Dan could not find any way to link an
-asset to a Grok/Suno/ElevenLabs entry — turns out that control **does not
-exist at all**, not a discoverability issue. This, plus two related design
-gaps Dan surfaced while testing, are now **explicitly part of Phase 5's
-scope** (real rework of Phase 2/3, not new Phase 6 work) — Phase 6 stays
-deferred until all three are done and confirmed:
-
-1. **Add asset-linking to Grok/Suno/ElevenLabs entries.** Currently
-   missing entirely — confirmed by Dan, not a UI-discoverability problem.
-   Since all three share one component/manager (parameterized by `kind`),
-   this is one fix that covers all three, not three separate ones.
-2. **Merge SFX library + ElevenLabs into one unified SFX system.** DECIDED
-   (2026-09-12): one SFX tab/list, with a **source** field distinguishing
-   free/licensed downloads from ElevenLabs-generated ones. **Ratings apply
-   to every entry regardless of source** — Dan explicitly wants to rate
-   plain downloaded SFX too, not just ElevenLabs ones. **REVISED
-   (2026-09-12): prompt/search-term text, version history, and
-   recipe-promotion also apply to every entry, regardless of source** —
-   not ElevenLabs-only as first scoped. Correction: a free/licensed sound
-   still has an equivalent of a "prompt" — the search term used to find it
-   on whatever free SFX source was searched — and it's just as worth
-   tracking which search terms actually turned up something good as it is
-   for AI-generation wording. Label the field generically (e.g. "Prompt /
-   search term") rather than assuming it only means an AI generation
-   prompt. This is a real merge of two existing Phase 3 subsystems, not
-   just a new addition — plan for actual data migration of existing SFX
-   library and ElevenLabs entries into the unified shape, not a
-   fresh-start reset.
-3. **Shots get multiple linked SFX; scenes get multiple linked songs.**
-   DECIDED (2026-09-12): explicitly **not** capped at one of either — Dan
-   gave the example of wanting two different songs across one scene.
-   Extends Phase 2's shot model (currently one optional single-asset link,
-   presumably meant for the shot's primary generated clip — keep that as
-   its own field) with a new multi-asset SFX list; extends Phase 2's scene
-   model (which currently has no asset-linking at all) with a new
-   multi-asset song list.
+**Phase 5 — Media Management, scope-expanded round now built (2026-09-12)**
+*(originally Phase 4)*. The Media Library tab itself was already confirmed
+by Dan: search, kind filter, "Unused only" checkbox, an unlinked asset
+showing "not used anywhere yet," and the AI Assistant staying pinned while
+scrolling all work as built. The three gaps that same pass surfaced —
+asset-linking missing entirely on Grok/Suno/ElevenLabs entries, the SFX
+library/ElevenLabs merge, and multi-linking SFX/songs on shots/scenes — are
+all now **built and verified by Claude** (see the "Phase 5 continued" entry
+under Completed Tasks above for the full per-item writeup and verification
+detail), same not-yet-Dan's-hands status as the first round. Phase 6 stays
+deferred until Dan has clicked through all three himself.
 
 Background & Key Decisions
 

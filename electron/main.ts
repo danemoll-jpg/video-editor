@@ -3,7 +3,13 @@ import path from 'node:path'
 import { ProjectManager } from './projectManager'
 import { ProductionManager } from './productionManager'
 import { PromptLabManager, type PromptEntryInput, type PromptEntryUpdates, type RatingInput, type RatingUpdates } from './promptLabManager'
-import { SfxLibraryManager, type SfxLibraryEntryInput, type SfxLibraryEntryUpdates } from './sfxLibraryManager'
+import {
+  SfxLibraryManager,
+  type SfxEntryInput,
+  type SfxEntryUpdates,
+  type SfxRatingInput,
+  type SfxRatingUpdates,
+} from './sfxLibraryManager'
 import { SettingsManager } from './settingsManager'
 import { AiAssistantManager, type AiAssistantContext } from './aiAssistantManager'
 import { MediaLibraryManager } from './mediaLibraryManager'
@@ -115,8 +121,12 @@ ipcMain.handle('scenes:create', (_e, projectId: string, title: string, descripti
 
 ipcMain.handle(
   'scenes:update',
-  (_e, projectId: string, sceneId: string, updates: { title?: string; description?: string }) =>
-    productionManager.updateScene(projectId, sceneId, updates),
+  (
+    _e,
+    projectId: string,
+    sceneId: string,
+    updates: { title?: string; description?: string; linkedSongAssetIds?: string[] },
+  ) => productionManager.updateScene(projectId, sceneId, updates),
 )
 
 ipcMain.handle('scenes:delete', (_e, projectId: string, sceneId: string) =>
@@ -151,6 +161,7 @@ ipcMain.handle(
       promptText?: string
       status?: ShotStatus
       linkedAssetId?: string | null
+      linkedSfxIds?: string[]
     },
   ) => productionManager.updateShot(projectId, shotId, updates),
 )
@@ -226,20 +237,54 @@ ipcMain.handle('promptlab:recipe:delete', (_e, projectId: string, kind: PromptLa
   promptLabManager.deleteRecipe(projectId, kind, recipeId),
 )
 
-// --- IPC: SFX library -------------------------------------------------------
+// --- IPC: SFX (unified library + ElevenLabs, Phase 5 merge) ---------------
 
 ipcMain.handle('sfx:list', (_e, projectId: string) => sfxLibraryManager.listEntries(projectId))
 
-ipcMain.handle('sfx:create', (_e, projectId: string, input: SfxLibraryEntryInput) =>
+ipcMain.handle('sfx:create', (_e, projectId: string, input: SfxEntryInput) =>
   sfxLibraryManager.createEntry(projectId, input),
 )
 
-ipcMain.handle('sfx:update', (_e, projectId: string, sfxId: string, updates: SfxLibraryEntryUpdates) =>
+ipcMain.handle('sfx:update', (_e, projectId: string, sfxId: string, updates: SfxEntryUpdates) =>
   sfxLibraryManager.updateEntry(projectId, sfxId, updates),
 )
 
 ipcMain.handle('sfx:delete', (_e, projectId: string, sfxId: string) =>
   sfxLibraryManager.deleteEntry(projectId, sfxId),
+)
+
+ipcMain.handle('sfx:rating:add', (_e, projectId: string, sfxId: string, input: SfxRatingInput) =>
+  sfxLibraryManager.addRating(projectId, sfxId, input),
+)
+
+ipcMain.handle(
+  'sfx:rating:update',
+  (_e, projectId: string, sfxId: string, ratingId: string, updates: SfxRatingUpdates) =>
+    sfxLibraryManager.updateRating(projectId, sfxId, ratingId, updates),
+)
+
+ipcMain.handle('sfx:rating:delete', (_e, projectId: string, sfxId: string, ratingId: string) =>
+  sfxLibraryManager.deleteRating(projectId, sfxId, ratingId),
+)
+
+ipcMain.handle('sfx:recipe:list', (_e, projectId: string) => sfxLibraryManager.listRecipes(projectId))
+
+ipcMain.handle('sfx:recipe:promote', (_e, projectId: string, sfxId: string, name: string) =>
+  sfxLibraryManager.promoteToRecipe(projectId, sfxId, name),
+)
+
+ipcMain.handle(
+  'sfx:recipe:update',
+  (
+    _e,
+    projectId: string,
+    recipeId: string,
+    updates: { name?: string; promptText?: string; settings?: string; notes?: string; tags?: string[] },
+  ) => sfxLibraryManager.updateRecipe(projectId, recipeId, updates),
+)
+
+ipcMain.handle('sfx:recipe:delete', (_e, projectId: string, recipeId: string) =>
+  sfxLibraryManager.deleteRecipe(projectId, recipeId),
 )
 
 // --- IPC: settings (Phase 4 — Anthropic API key) ---------------------------

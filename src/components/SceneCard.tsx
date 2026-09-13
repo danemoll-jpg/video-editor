@@ -1,14 +1,21 @@
 import { useState } from 'react'
-import type { Asset, Scene, Shot } from '../api'
+import type { Asset, Scene, SfxEntry, Shot } from '../api'
 import ShotCard, { type ShotUpdates } from './ShotCard'
+
+export interface SceneUpdates {
+  title?: string
+  description?: string
+  linkedSongAssetIds?: string[]
+}
 
 interface Props {
   scene: Scene
   shots: Shot[]
   assets: Asset[]
+  sfxEntries: SfxEntry[]
   isFirst: boolean
   isLast: boolean
-  onUpdate: (updates: { title?: string; description?: string }) => void
+  onUpdate: (updates: SceneUpdates) => void
   onDelete: () => void
   onMove: (direction: 'up' | 'down') => void
   onAddShot: (title: string) => void
@@ -21,6 +28,7 @@ export default function SceneCard({
   scene,
   shots,
   assets,
+  sfxEntries,
   isFirst,
   isLast,
   onUpdate,
@@ -36,6 +44,14 @@ export default function SceneCard({
   const [description, setDescription] = useState(scene.description)
   const [collapsed, setCollapsed] = useState(false)
   const [newShotTitle, setNewShotTitle] = useState('')
+
+  const audioAssets = assets.filter((a) => a.kind === 'audio')
+
+  function toggleSong(assetId: string) {
+    const current = scene.linkedSongAssetIds
+    const next = current.includes(assetId) ? current.filter((id) => id !== assetId) : [...current, assetId]
+    onUpdate({ linkedSongAssetIds: next })
+  }
 
   function handleSaveEdit() {
     onUpdate({ title, description })
@@ -107,6 +123,26 @@ export default function SceneCard({
 
       {!collapsed && (
         <div className="scene-card__body">
+          <div className="shot-card__field">
+            Linked songs <span className="muted">(not capped at one)</span>
+            {audioAssets.length === 0 ? (
+              <p className="muted">No audio assets imported yet.</p>
+            ) : (
+              <div className="checkbox-list">
+                {audioAssets.map((asset) => (
+                  <label key={asset.id} className="checkbox-list__item">
+                    <input
+                      type="checkbox"
+                      checked={scene.linkedSongAssetIds.includes(asset.id)}
+                      onChange={() => toggleSong(asset.id)}
+                    />
+                    {asset.originalName}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
           {shots.length === 0 ? (
             <p className="muted">No shots yet.</p>
           ) : (
@@ -115,6 +151,7 @@ export default function SceneCard({
                 key={shot.id}
                 shot={shot}
                 assets={assets}
+                sfxEntries={sfxEntries}
                 isFirst={index === 0}
                 isLast={index === shots.length - 1}
                 onUpdate={(updates) => onUpdateShot(shot.id, updates)}

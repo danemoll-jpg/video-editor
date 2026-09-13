@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { Asset, Scene, Shot } from '../api'
-import SceneCard from './SceneCard'
+import type { Asset, Scene, SfxEntry, Shot } from '../api'
+import SceneCard, { type SceneUpdates } from './SceneCard'
 import type { ShotUpdates } from './ShotCard'
 
 interface Props {
@@ -11,6 +11,7 @@ interface Props {
 export default function SceneList({ projectId, assets }: Props) {
   const [scenes, setScenes] = useState<Scene[]>([])
   const [shots, setShots] = useState<Shot[]>([])
+  const [sfxEntries, setSfxEntries] = useState<SfxEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [newSceneTitle, setNewSceneTitle] = useState('')
@@ -19,12 +20,14 @@ export default function SceneList({ projectId, assets }: Props) {
   async function refresh() {
     setLoading(true)
     try {
-      const [s, sh] = await Promise.all([
+      const [s, sh, sfx] = await Promise.all([
         window.api.listScenes(projectId),
         window.api.listShots(projectId),
+        window.api.listSfxEntries(projectId),
       ])
       setScenes(s)
       setShots(sh)
+      setSfxEntries(sfx)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -70,7 +73,7 @@ export default function SceneList({ projectId, assets }: Props) {
     guard(async () => setScenes(await window.api.moveScene(projectId, sceneId, direction)))
   }
 
-  function handleUpdateScene(sceneId: string, updates: { title?: string; description?: string }) {
+  function handleUpdateScene(sceneId: string, updates: SceneUpdates) {
     guard(async () => setScenes(await window.api.updateScene(projectId, sceneId, updates)))
   }
 
@@ -110,6 +113,7 @@ export default function SceneList({ projectId, assets }: Props) {
           scene={scene}
           shots={shots.filter((s) => s.sceneId === scene.id)}
           assets={assets}
+          sfxEntries={sfxEntries}
           isFirst={index === 0}
           isLast={index === scenes.length - 1}
           onUpdate={(updates) => handleUpdateScene(scene.id, updates)}

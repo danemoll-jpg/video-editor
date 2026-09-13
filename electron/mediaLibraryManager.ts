@@ -12,22 +12,24 @@ import { PROMPT_LAB_KINDS, PROMPT_LAB_LABELS } from './promptLabTypes'
 // Deliberately not a new storage subsystem — every piece of data surfaced
 // here already lives in one of the existing managers: ProjectManager's
 // assets.json (the actual video/image/audio/other files), ProductionManager's
-// shots.json (`linkedAssetId`), PromptLabManager's per-kind prompt/rating
-// history (`linkedAssetId` on both entries and ratings), and
-// SfxLibraryManager's sfxLibrary.json (`linkedAssetId`). This manager's only
-// job is cross-referencing all four into one unified, searchable view per
+// shots.json (`linkedAssetId`, plus the newer `linkedSfxIds`) and
+// scenes.json (`linkedSongAssetIds`), PromptLabManager's per-kind
+// prompt/rating history (`linkedAssetId` on both entries and ratings), and
+// SfxLibraryManager's unified sfxEntries.json (`linkedAssetId` on both
+// entries and ratings, regardless of source). This manager's only job is
+// cross-referencing all of that into one unified, searchable view per
 // asset — "what is this, and where is it actually used" — so Dan doesn't
-// have to go check five separate tabs to find out whether an asset is still
-// needed, or to find the SFX/rating/shot that used it. It's read-only: it
-// has no JSON file of its own and nothing here can be deleted/edited except
-// by going to the tab that actually owns that data.
+// have to go check every tab to find out whether an asset is still needed,
+// or to find the SFX/rating/shot/scene that used it. It's read-only: it has
+// no JSON file of its own and nothing here can be deleted/edited except by
+// going to the tab that actually owns that data.
 //
 // Also surfaces `exports/` (Phase 6/7's export output folder) as a plain
 // file listing, since it's part of the same "everything this project has
 // produced" picture even though nothing writes into it yet.
 
 export interface MediaUsage {
-  type: 'shot' | 'promptEntry' | 'promptRating' | 'sfx'
+  type: 'shot' | 'promptEntry' | 'promptRating' | 'sfx' | 'sceneSong' | 'shotSfx'
   /** Short label for where this usage lives, e.g. a lab name or "Scene 1 → Shot 2". */
   label: string
   /** A bit more detail — the shot's status, a prompt preview, a clip label, etc. */
@@ -65,14 +67,38 @@ export class MediaLibraryManager {
     ])
 
     const sceneTitleById = new Map(scenes.map((s) => [s.id, s.title]))
+    const sfxEntryById = new Map(sfxEntries.map((e) => [e.id, e]))
 
     return assets.map((asset) => {
       const usages: MediaUsage[] = []
 
       for (const shot of shots) {
-        if (shot.linkedAssetId !== asset.id) continue
         const sceneTitle = sceneTitleById.get(shot.sceneId) ?? 'Unknown scene'
-        usages.push({ type: 'shot', label: `${sceneTitle} → ${shot.title}`, detail: `Shot status: ${shot.status}` })
+
+        if (shot.linkedAssetId === asset.id) {
+          usages.push({ type: 'shot', label: `${sceneTitle} → ${shot.title}`, detail: `Shot status: ${shot.status}` })
+        }
+
+        // A shot's linked SFX are ids into the unified SFX system, not
+        // direct asset links — surface the underlying asset (via that SFX
+        // entry's own linkedAssetId) as used by this shot, same as any
+        // other cross-reference.
+        for (const sfxId of shot.linkedSfxIds) {
+          const sfxEntry = sfxEntryById.get(sfxId)
+          if (sfxEntry?.linkedAssetId === asset.id) {
+            usages.push({
+              type: 'shotSfx',
+              label: `${sceneTitle} → ${shot.title} (SFX)`,
+              detail: sfxEntry.name,
+            })
+          }
+        }
+      }
+
+      for (const scene of scenes) {
+        if (scene.linkedSongAssetIds.includes(asset.id)) {
+          usages.push({ type: 'sceneSong', label: scene.title, detail: 'Linked song' })
+        }
       }
 
       PROMPT_LAB_KINDS.forEach((kind, i) => {
@@ -96,9 +122,23 @@ export class MediaLibraryManager {
         }
       })
 
+      // `sfxTags`/`sfxLicense` below fold in just the first matching entry (same
+      // "one summary value" simplification the pre-merge SfxLibraryManager made,
+      // now shared across both sources) — `usages` itself still lists every entry.
       const sfxEntry = sfxEntries.find((e) => e.linkedAssetId === asset.id)
-      if (sfxEntry) {
-        usages.push({ type: 'sfx', label: 'SFX Library', detail: sfxEntry.name })
+      for (const otherSfxEntry of sfxEntries) {
+        if (otherSfxEntry.linkedAssetId === asset.id) {
+          usages.push({
+            type: 'sfx',
+            label: otherSfxEntry.source === 'elevenlabs' ? 'SFX (ElevenLabs)' : 'SFX (Free/Licensed)',
+            detail: otherSfxEntry.name,
+          })
+        }
+        for (const rating of otherSfxEntry.ratings) {
+          if (rating.linkedAssetId === asset.id) {
+            usages.push({ type: 'promptRating', label: 'SFX rating', detail: rating.clipLabel })
+          }
+        }
       }
 
       return {

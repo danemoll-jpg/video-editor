@@ -18,13 +18,16 @@ interface Props {
   assets: Asset[]
 }
 
-const EMPTY_FORM = { promptText: '', lyrics: '', settings: '', notes: '', tagsText: '' }
+const EMPTY_FORM = { promptText: '', lyrics: '', settings: '', notes: '', tagsText: '', linkedAssetId: '' }
 
 /**
- * One lab's full history/ratings/recipes UI (Grok Prompt Lab, Suno Music
- * Lab, or the ElevenLabs SFX lab) — reused across all three via `kind`,
- * mirroring how promptLabManager.ts is one manager for all three. The SFX
- * *library* (a different shape) has its own SfxLibraryPanel.
+ * One lab's full history/ratings/recipes UI (Grok Prompt Lab or Suno Music
+ * Lab) — reused across both via `kind`, mirroring how promptLabManager.ts
+ * is one manager for both. The unified SFX system (a merge of the old SFX
+ * library and the old ElevenLabs prompt-lab kind — see
+ * electron/sfxLibraryManager.ts) has its own SfxPanel, structurally similar
+ * but with a source-conditional set of extra fields instead of a fixed
+ * `kind`.
  */
 export default function PromptLabPanel({ projectId, kind, assets }: Props) {
   const [entries, setEntries] = useState<PromptEntry[]>([])
@@ -99,6 +102,7 @@ export default function PromptLabPanel({ projectId, kind, assets }: Props) {
             .map((t) => t.trim())
             .filter(Boolean),
           parentId,
+          linkedAssetId: form.linkedAssetId || null,
         }),
       )
       setForm(EMPTY_FORM)
@@ -275,6 +279,20 @@ export default function PromptLabPanel({ projectId, kind, assets }: Props) {
               value={form.tagsText}
               onChange={(e) => setForm((f) => ({ ...f, tagsText: e.target.value }))}
             />
+          </label>
+          <label className="shot-card__field">
+            Linked asset
+            <select
+              value={form.linkedAssetId}
+              onChange={(e) => setForm((f) => ({ ...f, linkedAssetId: e.target.value }))}
+            >
+              <option value="">None — link once the generated file's been imported, or leave unlinked</option>
+              {assets.map((asset) => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.originalName}
+                </option>
+              ))}
+            </select>
           </label>
           <div className="shot-card__field-actions">
             <button

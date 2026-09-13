@@ -1,9 +1,18 @@
 import { useState } from 'react'
-import type { Recipe } from '../api'
 import { formatDate } from '../format'
 
+/** Structural shape both a prompt-lab Recipe and a unified SfxRecipe satisfy — this component works with either. */
+export interface RecipeCardData {
+  name: string
+  promptText: string
+  lyrics?: string
+  settings: string
+  notes: string
+  createdAt: string
+}
+
 interface Props {
-  recipe: Recipe
+  recipe: RecipeCardData
   showLyrics: boolean
   onRename: (name: string) => void
   onDelete: () => void

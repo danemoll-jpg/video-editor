@@ -481,6 +481,28 @@ body {
   gap: 8px;
 }
 
+/* Multi-link checkboxes (Phase 5 — shot↔SFX, scene↔songs) */
+
+.checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.checkbox-list__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
 /* Prompt Lab (Phase 3) */
 
 .tab-bar--sub {

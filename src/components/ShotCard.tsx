@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Asset, Shot, ShotStatus } from '../api'
+import type { Asset, Shot, ShotStatus, SfxEntry } from '../api'
 import { SHOT_STATUSES, SHOT_STATUS_LABELS } from '../../electron/shotStatus'
 
 export interface ShotUpdates {
@@ -8,11 +8,13 @@ export interface ShotUpdates {
   promptText?: string
   status?: ShotStatus
   linkedAssetId?: string | null
+  linkedSfxIds?: string[]
 }
 
 interface Props {
   shot: Shot
   assets: Asset[]
+  sfxEntries: SfxEntry[]
   isFirst: boolean
   isLast: boolean
   onUpdate: (updates: ShotUpdates) => void
@@ -20,7 +22,7 @@ interface Props {
   onMove: (direction: 'up' | 'down') => void
 }
 
-export default function ShotCard({ shot, assets, isFirst, isLast, onUpdate, onDelete, onMove }: Props) {
+export default function ShotCard({ shot, assets, sfxEntries, isFirst, isLast, onUpdate, onDelete, onMove }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [title, setTitle] = useState(shot.title)
   const [description, setDescription] = useState(shot.description)
@@ -40,6 +42,12 @@ export default function ShotCard({ shot, assets, isFirst, isLast, onUpdate, onDe
   }
 
   const nextStatus = SHOT_STATUSES[SHOT_STATUSES.indexOf(shot.status) + 1]
+
+  function toggleSfx(sfxId: string) {
+    const current = shot.linkedSfxIds
+    const next = current.includes(sfxId) ? current.filter((id) => id !== sfxId) : [...current, sfxId]
+    onUpdate({ linkedSfxIds: next })
+  }
 
   return (
     <div className="shot-card">
@@ -114,7 +122,7 @@ export default function ShotCard({ shot, assets, isFirst, isLast, onUpdate, onDe
           </div>
 
           <label className="shot-card__field">
-            Linked asset
+            Linked asset <span className="muted">(the shot's primary generated clip)</span>
             <select
               value={shot.linkedAssetId ?? ''}
               onChange={(e) => onUpdate({ linkedAssetId: e.target.value || null })}
@@ -127,6 +135,26 @@ export default function ShotCard({ shot, assets, isFirst, isLast, onUpdate, onDe
               ))}
             </select>
           </label>
+
+          <div className="shot-card__field">
+            Linked SFX <span className="muted">(not capped at one)</span>
+            {sfxEntries.length === 0 ? (
+              <p className="muted">No SFX yet — add some in the Prompt Lab's SFX tab.</p>
+            ) : (
+              <div className="checkbox-list">
+                {sfxEntries.map((sfx) => (
+                  <label key={sfx.id} className="checkbox-list__item">
+                    <input
+                      type="checkbox"
+                      checked={shot.linkedSfxIds.includes(sfx.id)}
+                      onChange={() => toggleSfx(sfx.id)}
+                    />
+                    {sfx.name}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

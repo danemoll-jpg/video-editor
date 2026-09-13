@@ -1,17 +1,20 @@
-import type { PromptRating } from '../electron/promptLabManager'
-
 export interface ScoreAverages {
   perDimension: Record<string, number | null>
   overall: number | null
 }
 
+/** Anything with per-dimension scores — a PromptRating or an SfxRating (see electron/promptLabManager.ts / sfxLibraryManager.ts) both satisfy this structurally. */
+export interface Scoreable {
+  scores: Record<string, number>
+}
+
 /**
- * Mean score per dimension across a prompt entry's per-clip ratings, plus
- * an overall mean across every scored dimension in every rating. A
+ * Mean score per dimension across a prompt/SFX entry's per-clip ratings,
+ * plus an overall mean across every scored dimension in every rating. A
  * dimension nobody has scored yet is `null`, not 0 — an unrated dimension
  * shouldn't drag the average down.
  */
-export function averageScores(ratings: PromptRating[], dimensionKeys: string[]): ScoreAverages {
+export function averageScores(ratings: Scoreable[], dimensionKeys: string[]): ScoreAverages {
   const perDimension: Record<string, number | null> = {}
   const allValues: number[] = []
   for (const key of dimensionKeys) {

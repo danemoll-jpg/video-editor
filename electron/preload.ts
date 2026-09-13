@@ -9,7 +9,14 @@ import type {
   RatingInput,
   RatingUpdates,
 } from './promptLabManager'
-import type { SfxLibraryEntry, SfxLibraryEntryInput, SfxLibraryEntryUpdates } from './sfxLibraryManager'
+import type {
+  SfxEntry,
+  SfxEntryInput,
+  SfxEntryUpdates,
+  SfxRecipe,
+  SfxRatingInput,
+  SfxRatingUpdates,
+} from './sfxLibraryManager'
 import type { AiMessage, AiAssistantContext } from './aiAssistantManager'
 import type { MediaLibraryEntry, ExportFile } from './mediaLibraryManager'
 import type { ShotStatus } from './shotStatus'
@@ -41,7 +48,7 @@ const api = {
   updateScene: (
     projectId: string,
     sceneId: string,
-    updates: { title?: string; description?: string },
+    updates: { title?: string; description?: string; linkedSongAssetIds?: string[] },
   ): Promise<Scene[]> => ipcRenderer.invoke('scenes:update', projectId, sceneId, updates),
   deleteScene: (projectId: string, sceneId: string): Promise<{ scenes: Scene[]; shots: Shot[] }> =>
     ipcRenderer.invoke('scenes:delete', projectId, sceneId),
@@ -61,6 +68,7 @@ const api = {
       promptText?: string
       status?: ShotStatus
       linkedAssetId?: string | null
+      linkedSfxIds?: string[]
     },
   ): Promise<Shot[]> => ipcRenderer.invoke('shots:update', projectId, shotId, updates),
   deleteShot: (projectId: string, shotId: string): Promise<Shot[]> =>
@@ -123,16 +131,35 @@ const api = {
   deleteRecipe: (projectId: string, kind: PromptLabKind, recipeId: string): Promise<Recipe[]> =>
     ipcRenderer.invoke('promptlab:recipe:delete', projectId, kind, recipeId),
 
-  listSfxEntries: (projectId: string): Promise<SfxLibraryEntry[]> => ipcRenderer.invoke('sfx:list', projectId),
-  createSfxEntry: (projectId: string, input: SfxLibraryEntryInput): Promise<SfxLibraryEntry[]> =>
+  listSfxEntries: (projectId: string): Promise<SfxEntry[]> => ipcRenderer.invoke('sfx:list', projectId),
+  createSfxEntry: (projectId: string, input: SfxEntryInput): Promise<SfxEntry[]> =>
     ipcRenderer.invoke('sfx:create', projectId, input),
-  updateSfxEntry: (
+  updateSfxEntry: (projectId: string, sfxId: string, updates: SfxEntryUpdates): Promise<SfxEntry[]> =>
+    ipcRenderer.invoke('sfx:update', projectId, sfxId, updates),
+  deleteSfxEntry: (projectId: string, sfxId: string): Promise<SfxEntry[]> =>
+    ipcRenderer.invoke('sfx:delete', projectId, sfxId),
+
+  addSfxRating: (projectId: string, sfxId: string, input: SfxRatingInput): Promise<SfxEntry[]> =>
+    ipcRenderer.invoke('sfx:rating:add', projectId, sfxId, input),
+  updateSfxRating: (
     projectId: string,
     sfxId: string,
-    updates: SfxLibraryEntryUpdates,
-  ): Promise<SfxLibraryEntry[]> => ipcRenderer.invoke('sfx:update', projectId, sfxId, updates),
-  deleteSfxEntry: (projectId: string, sfxId: string): Promise<SfxLibraryEntry[]> =>
-    ipcRenderer.invoke('sfx:delete', projectId, sfxId),
+    ratingId: string,
+    updates: SfxRatingUpdates,
+  ): Promise<SfxEntry[]> => ipcRenderer.invoke('sfx:rating:update', projectId, sfxId, ratingId, updates),
+  deleteSfxRating: (projectId: string, sfxId: string, ratingId: string): Promise<SfxEntry[]> =>
+    ipcRenderer.invoke('sfx:rating:delete', projectId, sfxId, ratingId),
+
+  listSfxRecipes: (projectId: string): Promise<SfxRecipe[]> => ipcRenderer.invoke('sfx:recipe:list', projectId),
+  promoteSfxRecipe: (projectId: string, sfxId: string, name: string): Promise<SfxRecipe[]> =>
+    ipcRenderer.invoke('sfx:recipe:promote', projectId, sfxId, name),
+  updateSfxRecipe: (
+    projectId: string,
+    recipeId: string,
+    updates: { name?: string; promptText?: string; settings?: string; notes?: string; tags?: string[] },
+  ): Promise<SfxRecipe[]> => ipcRenderer.invoke('sfx:recipe:update', projectId, recipeId, updates),
+  deleteSfxRecipe: (projectId: string, recipeId: string): Promise<SfxRecipe[]> =>
+    ipcRenderer.invoke('sfx:recipe:delete', projectId, recipeId),
 
   hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:hasApiKey'),
   setApiKey: (key: string): Promise<boolean> => ipcRenderer.invoke('settings:setApiKey', key),

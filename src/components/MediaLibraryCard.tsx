@@ -13,6 +13,8 @@ const USAGE_ICONS: Record<MediaLibraryEntry['usages'][number]['type'], string> =
   promptEntry: '📝',
   promptRating: '⭐',
   sfx: '🔊',
+  sceneSong: '🎵',
+  shotSfx: '🔊',
 }
 
 interface Props {

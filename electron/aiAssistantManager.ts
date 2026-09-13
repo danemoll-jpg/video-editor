@@ -9,14 +9,22 @@ import type { PromptLabKind } from './promptLabTypes'
 // --- Data model -------------------------------------------------------
 //
 // Phase 4's AI Assistant: a small chat panel available in the Idea tab, the
-// Script tab, and each Prompt Lab sub-tab (Grok/Suno/ElevenLabs) — one
-// context per place it appears. Conversation history is kept per project,
-// per context, in each project's new `aiAssistant/` folder:
+// Script tab, each Prompt Lab sub-tab (Grok/Suno), and the unified SFX
+// panel — one context per place it appears. Conversation history is kept
+// per project, per context, in each project's new `aiAssistant/` folder:
 //
 //   aiAssistant/
 //     idea.json        suno.json
 //     script.json      elevenlabs.json
 //     grok.json
+//
+// 'elevenlabs' stays its own context even though the Phase 5 SFX merge
+// folded the old ElevenLabs prompt-lab *kind* into the unified SFX system
+// (electron/sfxLibraryManager.ts) — the AI Assistant that helps write an
+// ElevenLabs SFX generation prompt is still a distinct, useful context, it's
+// just embedded in the SFX panel now instead of its own prompt-lab tab. It's
+// no longer a `PromptLabKind`, so it's listed explicitly here rather than
+// inherited.
 //
 // This deliberately does NOT auto-feed other project data (the script, shot
 // prompts, etc.) into the request — each context's system prompt describes
@@ -29,7 +37,7 @@ import type { PromptLabKind } from './promptLabTypes'
 // entered in the Settings screen) and never leaves the main process — this
 // file is the only place that calls the Anthropic API.
 
-export type AiAssistantContext = 'idea' | 'script' | PromptLabKind
+export type AiAssistantContext = 'idea' | 'script' | PromptLabKind | 'elevenlabs'
 
 export const AI_ASSISTANT_CONTEXTS: AiAssistantContext[] = ['idea', 'script', 'grok', 'suno', 'elevenlabs']
 
@@ -57,8 +65,9 @@ lighting, and style. When asked for a prompt, give one ready to paste, not a des
 optionally lyrics) to paste into Suno. When asked for a prompt or lyrics, give text ready to paste,
 not a description of it.`,
   elevenlabs: `You are helping a solo creator write a sound-effect description to paste into ElevenLabs'
-audio generation tool. Favor short, concrete, sensory descriptions of the sound itself. When asked for
-a prompt, give one ready to paste, not a description of one.`,
+audio generation tool, or a good search term for finding a similar sound on a free/licensed SFX site.
+Favor short, concrete, sensory descriptions of the sound itself. When asked for one, give text ready
+to paste or search with, not a description of it.`,
 }
 
 function conversationPath(dir: string, context: AiAssistantContext): string {

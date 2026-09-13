@@ -1,11 +1,24 @@
-import type { PromptEntry } from '../api'
-import type { RatingDimension } from '../../electron/promptLabTypes'
 import { formatDate } from '../format'
-import { averageScores } from '../ratingUtils'
+import { averageScores, type Scoreable } from '../ratingUtils'
+
+/** Structural shape both a prompt-lab PromptEntry and a unified SfxEntry satisfy — this component (and RecipeCard) work with either. */
+export interface CompareEntry {
+  id: string
+  createdAt: string
+  promptText: string
+  lyrics?: string
+  settings: string
+  ratings: Scoreable[]
+}
+
+interface Dimension {
+  key: string
+  label: string
+}
 
 interface Props {
-  entries: [PromptEntry, PromptEntry]
-  dimensions: RatingDimension[]
+  entries: [CompareEntry, CompareEntry]
+  dimensions: Dimension[]
   showLyrics: boolean
   onClose: () => void
 }
@@ -15,8 +28,8 @@ function Column({
   dimensions,
   showLyrics,
 }: {
-  entry: PromptEntry
-  dimensions: RatingDimension[]
+  entry: CompareEntry
+  dimensions: Dimension[]
   showLyrics: boolean
 }) {
   const { perDimension, overall } = averageScores(entry.ratings, dimensions.map((d) => d.key))

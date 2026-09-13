@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Asset } from '../api'
 import { PROMPT_LAB_KINDS, PROMPT_LAB_LABELS, type PromptLabKind } from '../../electron/promptLabTypes'
 import PromptLabPanel from './PromptLabPanel'
-import SfxLibraryPanel from './SfxLibraryPanel'
+import SfxPanel from './SfxPanel'
 
 interface Props {
   projectId: string
@@ -14,11 +14,15 @@ type SubTab = PromptLabKind | 'sfx'
 const SUB_TABS: { key: SubTab; label: string }[] = [
   { key: 'grok', label: PROMPT_LAB_LABELS.grok },
   { key: 'suno', label: PROMPT_LAB_LABELS.suno },
-  { key: 'sfx', label: 'SFX Library' },
-  { key: 'elevenlabs', label: PROMPT_LAB_LABELS.elevenlabs },
+  { key: 'sfx', label: 'SFX' },
 ]
 
-/** Phase 3: Prompt/Asset Lab — the four subsystems as sub-tabs within the project's "Prompt Lab" tab. */
+/**
+ * Phase 3: Prompt/Asset Lab — Grok/Suno as sub-tabs within the project's
+ * "Prompt Lab" tab, plus the unified SFX system (Phase 5 merge of the old
+ * SFX library and ElevenLabs prompt-lab kind — see sfxLibraryManager.ts's
+ * header comment).
+ */
 export default function PromptLab({ projectId, assets }: Props) {
   const [subTab, setSubTab] = useState<SubTab>('grok')
 
@@ -37,7 +41,7 @@ export default function PromptLab({ projectId, assets }: Props) {
       </div>
 
       {subTab === 'sfx' ? (
-        <SfxLibraryPanel projectId={projectId} assets={assets} />
+        <SfxPanel projectId={projectId} assets={assets} />
       ) : (
         <PromptLabPanel key={subTab} projectId={projectId} kind={subTab} assets={assets} />
       )}

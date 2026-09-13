@@ -4,26 +4,30 @@
 // dimension labels, without pulling any main-process filesystem code into
 // the browser bundle.
 //
-// Grok, Suno, and ElevenLabs SFX all follow the same "prompt lab" shape
-// (prompt history, per-clip ratings, version comparison, reusable recipes —
-// see electron/promptLabManager.ts) but rate different things, so the rating
+// Grok and Suno follow the same "prompt lab" shape (prompt history, per-clip
+// ratings, version comparison, reusable recipes — see
+// electron/promptLabManager.ts) but rate different things, so the rating
 // dimensions are keyed by lab here rather than hard-coded into the manager.
+//
+// ElevenLabs SFX prompt history used to be this manager's third kind, but as
+// of the Phase 5 SFX merge it's been folded into the unified SFX system
+// (electron/sfxLibraryManager.ts, electron/sfxTypes.ts) alongside the SFX
+// library, since both are "an SFX with a source" now — see that file's
+// header comment for the merge and its data migration.
 
-export type PromptLabKind = 'grok' | 'suno' | 'elevenlabs'
+export type PromptLabKind = 'grok' | 'suno'
 
-export const PROMPT_LAB_KINDS: PromptLabKind[] = ['grok', 'suno', 'elevenlabs']
+export const PROMPT_LAB_KINDS: PromptLabKind[] = ['grok', 'suno']
 
 export const PROMPT_LAB_LABELS: Record<PromptLabKind, string> = {
   grok: 'Grok Prompt Lab',
   suno: 'Suno Music Lab',
-  elevenlabs: 'ElevenLabs SFX Lab',
 }
 
 /** Placeholder copy for the main prompt-text field, per lab. */
 export const PROMPT_LAB_PROMPT_PLACEHOLDER: Record<PromptLabKind, string> = {
   grok: 'Video generation prompt to paste into Grok…',
   suno: 'Style/genre prompt to paste into Suno…',
-  elevenlabs: 'Sound-effect description to paste into ElevenLabs…',
 }
 
 export interface RatingDimension {
@@ -47,15 +51,9 @@ export const RATING_DIMENSIONS: Record<PromptLabKind, RatingDimension[]> = {
     { key: 'promptObedience', label: 'Prompt Obedience' },
     { key: 'overallVibe', label: 'Overall Vibe' },
   ],
-  elevenlabs: [
-    { key: 'realism', label: 'Realism' },
-    { key: 'timingSync', label: 'Timing / Sync' },
-    { key: 'audioQuality', label: 'Audio Quality' },
-    { key: 'promptObedience', label: 'Prompt Obedience' },
-  ],
 }
 
-/** Whether this lab uses the lyrics field (Suno only — Grok/ElevenLabs hide it in the UI). */
+/** Whether this lab uses the lyrics field (Suno only — Grok hides it in the UI). */
 export function labUsesLyrics(kind: PromptLabKind): boolean {
   return kind === 'suno'
 }
