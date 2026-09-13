@@ -107,28 +107,16 @@ click-through and a real successful API call by Dan with his own key — see
 TODO.md's Completed Tasks. A SFX-library/ElevenLabs text-input bug found
 during Phase 3 verification turned out to be intermittent, not a real
 defect, and is deferred to the backlog (see TODO.md's Technical Notes)
-rather than blocking anything. Current objective is **Phase 5 (Media
-Management)**, whose scope grew once Dan's own click-through of the first
-round surfaced three real gaps rather than just confirming it — see
-TODO.md's Current Objective for all three, all now built:
+rather than blocking anything. **Phase 5 (Media Management)** is now fully
+confirmed by Dan's own click-through, including all three items its scope
+grew to cover: Grok/Suno asset-linking, the unified SFX system (merging
+the old SFX library and ElevenLabs into one, with a `source` field and
+universal ratings/prompt-search-term/version history/recipes regardless of
+source), and uncapped multi-linking (shots → multiple SFX, scenes →
+multiple songs). See TODO.md's Completed Tasks for the full record.
 
-1. Grok/Suno prompt entries can now be linked to an asset from the entry's
-   own form and edit view (previously the data model supported it but no
-   UI exposed it at all).
-2. The old SFX library and ElevenLabs prompt-lab kind are merged into one
-   unified SFX system (`electron/sfxLibraryManager.ts`, `SfxPanel.tsx`) —
-   every entry has a `source` (free/licensed vs. ElevenLabs-generated) and,
-   regardless of source, the same prompt/search-term field, version
-   history, ratings, and recipe-promotion. Existing projects migrate their
-   old data into the unified shape automatically, once, the first time
-   they're opened after this change.
-3. Shots can now link multiple SFX (their older single `linkedAssetId`
-   stays as its own separate "primary clip" field) and scenes can now link
-   multiple songs — neither capped at one.
-
-All three are **built and verified by Claude** (typecheck/build, a
-manager-level integration test covering the data migration and every new
-link type, and a scripted Playwright click-through against the real app —
-see TODO.md's Completed Tasks) but **not yet confirmed by Dan's own
-hands**, so Phase 5 stays the current objective until that happens, per
-this project's normal confirm-then-advance pattern.
+Current objective is **Phase 6 (Video Editor)** — the actual editing
+layer: multiple video/audio tracks, trimming/splitting, rearranging clips,
+overlays/text/titles, fades/dissolves, volume control, green screen/chroma
+key, cropping/scaling/positioning, speed adjustment, basic transitions, MP4
+export. See TODO.md's Current Objective.

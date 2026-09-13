@@ -588,17 +588,20 @@ path himself with his own Anthropic key entered in Settings: prompts
 worked well. This closes the one item that was keeping Phase 4 open (see
 Completed Tasks above for everything confirmed before this).
 
-**Phase 5 — Media Management, scope-expanded round now built (2026-09-12)**
-*(originally Phase 4)*. The Media Library tab itself was already confirmed
-by Dan: search, kind filter, "Unused only" checkbox, an unlinked asset
-showing "not used anywhere yet," and the AI Assistant staying pinned while
-scrolling all work as built. The three gaps that same pass surfaced —
-asset-linking missing entirely on Grok/Suno/ElevenLabs entries, the SFX
-library/ElevenLabs merge, and multi-linking SFX/songs on shots/scenes — are
-all now **built and verified by Claude** (see the "Phase 5 continued" entry
-under Completed Tasks above for the full per-item writeup and verification
-detail), same not-yet-Dan's-hands status as the first round. Phase 6 stays
-deferred until Dan has clicked through all three himself.
+**Phase 5 — Media Management is now fully confirmed.** Dan clicked through
+all three scope-expansion items himself: linking a Grok/Suno entry to an
+asset, the unified SFX tab (licensed and ElevenLabs-sourced entries side
+by side, both ratable), and multi-linking SFX on a shot / multiple songs
+on a scene. Everything worked. This closes Phase 5 — see Completed Tasks
+above for the full built/verified record across both rounds.
+
+**Phase 6 — Video Editor, now current.** The actual editing layer:
+multiple video/audio tracks, trimming/splitting, rearranging clips,
+overlays/text/titles, fades/dissolves, volume control, green screen/chroma
+key, cropping/scaling/positioning, speed adjustment, basic transitions, MP4
+export. Deliberately not a CapCut feature clone — scoped to what this
+workflow actually needs. This is the largest, highest-effort phase in the
+roadmap.
 
 Background & Key Decisions
 
@@ -637,22 +640,15 @@ Claude.ai chat.
 
 Next Steps (Do Not Start Yet)
 
-Full phased roadmap, in order — Phase 5 (Media Management, above, now
-current, with the AI Assistant UI fix folded in) is underway; each phase
-below stays deferred until the prior one is functional:
+Full phased roadmap, in order — Phase 6 (Video Editor, above) is now
+current; each phase below stays deferred until the prior one is
+functional:
 
-1. **Phase 6 — Video Editor** *(originally Phase 5).* The actual editing
-   layer: multiple video/audio tracks, trimming/splitting, rearranging
-   clips, overlays/text/titles, fades/dissolves, volume control, green
-   screen/chroma key, cropping/scaling/positioning, speed adjustment, basic
-   transitions, MP4 export. Deliberately not a CapCut feature clone — scoped
-   to what this workflow actually needs. Acknowledged as the largest,
-   highest-effort phase.
-2. **Phase 7 — Export Tools** *(originally Phase 6).* MP4, GIF,
+1. **Phase 7 — Export Tools** *(originally Phase 6).* MP4, GIF,
    still-frame, and clip exports as first-class features (GIF maker: select
    part of a clip/timeline → choose dimensions/FPS/quality/looping — not
    buried in a submenu).
-3. **Phase 8 — Smarter Assistance** *(originally Phase 7).* Use the
+2. **Phase 8 — Smarter Assistance** *(originally Phase 7).* Use the
    accumulated Grok/Suno/SFX prompt history to recommend techniques based on
    what's actually worked before, rather than generating cold suggestions
    each time. Considered the most distinctive long-term feature of the
