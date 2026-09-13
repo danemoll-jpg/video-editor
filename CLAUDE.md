@@ -147,5 +147,16 @@ volume, chroma key, crop/scale/position, speed, a curated set of basic
 transitions, and real MP4 export via a bundled FFmpeg — is built and
 dev-tested (including a Claude-driven UI click-through of the actual app)
 but **not yet confirmed by Dan's own hands**, so it's still the current
-objective; Phase 7 doesn't start until that happens. See TODO.md's Current
-Objective and Completed Tasks for the full record.
+objective; Phase 7 doesn't start until that happens. **Nine more items
+were added to this phase's scope (2026-09-13) before that happens** (a
+tenth, a text-overlay flow fix, was withdrawn — turned out to be a
+misunderstanding, not a real gap) — two audio-extraction features
+(standalone asset + timeline clip), a confirmed real bug (chroma key
+breaks specifically on export — keyed areas render as opaque black —
+likely an alpha/pixel-format issue in the FFmpeg filter chain, needs real
+pixel-level verification this time, not just FFprobe stream checks), a
+library-relocation Settings option (with real data migration), a
+per-export destination choice, direct-manipulation editing on the preview
+(drag to move/crop), a right-click context menu on clips, reverse/mirror
+clip support, and playhead drag-precision improvements. See TODO.md's
+Current Objective and Completed Tasks for the full record.

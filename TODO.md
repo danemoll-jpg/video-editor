@@ -785,6 +785,94 @@ surfaced about the trim-drag gesture specifically). **Phase 7 does not
 start** until Dan has clicked through the Editor tab himself, per this
 project's normal confirm-then-advance pattern.
 
+**Two more gaps identified (2026-09-13), added to Phase 6's scope before
+Phase 7 starts** — not originally specified anywhere, genuinely overlooked,
+not decided against. Speed adjustment (also asked about) turned out to
+already be built — see above, the Clip Inspector's `speed` field. Audio
+extraction is real, new work, confirmed with Dan to cover **both** of the
+following, not just one:
+1. **Extract audio from an imported video asset into a new standalone
+   audio asset.** An "Extract Audio" action (Assets tab / Media Library) on
+   a video asset that runs FFmpeg (`-vn`) to pull its audio track out into
+   a real new audio asset file — added to `assets/audio/` and `assets.json`
+   like any other imported asset, so it can be used anywhere an audio asset
+   can: linked to a shot, a scene's songs, an SFX entry, or dragged onto an
+   editor audio track.
+2. **Extract a clip's audio onto its own audio track within the timeline
+   editor.** For a video clip already placed on the timeline, an action
+   that detaches its audio into a new, independent clip on an audio track
+   at the same timeline position — carrying over the video clip's current
+   trim/speed so the two stay in sync at the moment of extraction, but
+   editable independently (volume/fades/trim) from then on. The video
+   clip's own "include this clip's audio" toggle should switch off
+   automatically when its audio is extracted this way, so the sound isn't
+   doubled.
+
+**Eight more items from Dan's own testing pass (2026-09-13), added to Phase
+6's scope before Phase 7 starts.** Everything else in Phase 6 worked fine
+per Dan directly — these are additions/fixes on top of that, not signs the
+rest is broken. Reporting each separately, as usual:
+
+3. **BUG, confirmed real by Dan — chroma key breaks specifically on
+   export, not preview.** Consistent in both VLC and Windows Media Player,
+   every time, not intermittent. Symptom: keyed-out areas render as opaque
+   **black** in the exported file instead of transparent — with nothing
+   beneath the keyed clip, the result is mostly a black screen; with
+   another clip beneath it, the keyed clip's black areas fully cover it
+   rather than letting it show through. **Diagnosis, not yet confirmed by
+   code inspection:** this pattern strongly suggests an alpha-channel/pixel
+   -format problem in the FFmpeg `filter_complex` chain — the `chromakey`
+   filter's alpha output likely isn't surviving through to the `overlay`
+   step (e.g. an implicit format conversion drops alpha along the way, or
+   the chain isn't consistently using an alpha-carrying pixel format like
+   `yuva420p`/`rgba` end-to-end). The engine-level test that shipped with
+   Phase 6 only FFprobed stream presence/duration, not actual pixel/alpha
+   correctness, which is how this got through unverified — fix needs a
+   real check of exported pixel data (or at minimum a visual inspection),
+   not just "the filter graph compiles and FFprobe sees a video stream."
+   Priority: this is a real regression in a feature that was reported as
+   built, not a nice-to-have.
+4. **WITHDRAWN (2026-09-13) — not a real gap, was a misunderstanding.**
+   Dan initially thought text overlay creation routed through the
+   Assets/import flow. On closer look, he found the direct-add path
+   already exists — he'd been clicking "+ Overlay" expecting it to add a
+   text clip directly, when that button actually adds a new overlay
+   *track* (a line to hold clips), not a text clip itself. No code change
+   needed here; leaving this entry as a record of the false alarm rather
+   than deleting it outright, per this project's habit of tracking what
+   was actually resolved vs. what's still open.
+5. **Choose the library's location.** DECIDED (2026-09-13): add a Settings
+   option to relocate the entire `Dan's Video Studio/Projects` library root
+   to a folder Dan picks — an actual migration of existing project data to
+   the new location, not just pointing at a new empty folder going forward.
+   Motivation: the default (deep inside the OS's Documents folder) is
+   buried too deep for Dan's liking.
+6. **Choose export destination per-export.** DECIDED (2026-09-13): the
+   Export dialog gets a destination choice — default to the project's own
+   `exports/` folder (so Media Library keeps tracking it, per Dan's
+   "both places" answer being really "give me the choice each time," not
+   "always both"), or pick a different folder for that specific export.
+7. **Direct-manipulation editing on the preview.** Drag a clip directly on
+   the Preview Player canvas to move/reposition it, and drag handles to
+   crop — as an addition to the Clip Inspector's numeric fields, not a
+   replacement (numeric entry stays for precision when wanted).
+8. **Right-click context menu on a clip.** Common actions (split at
+   playhead, delete, duplicate, extract audio per item 2 above, etc.)
+   available via right-click, instead of only through the Inspector panel.
+9. **Reverse and mirror/flip clips.** Two new clip properties — needs both
+   preview support and real FFmpeg export support (a reverse filter for
+   the former, `hflip` for the latter).
+10. **Playhead/scrub-head drag precision.** Dan finds it hard to land the
+    playhead exactly where he wants by dragging. Related to, but distinct
+    from, the pre-existing unconfirmed "trim-drag gesture feel" question
+    from Phase 6's original verification (see Completed Tasks above) —
+    both are drag-precision issues but on different controls (playhead vs.
+    trim handles). Recommended default, not yet confirmed with Dan:
+    timeline zoom controls plus a live time readout while dragging (either
+    the playhead or a trim handle), so exact positioning doesn't depend on
+    pixel-perfect mouse accuracy at whatever zoom level happens to be
+    active. Revisit if this doesn't turn out to be what actually helps.
+
 Background & Key Decisions
 
 **RESOLVED — built all four Phase 3 subsystems together** (2026-09-12),
