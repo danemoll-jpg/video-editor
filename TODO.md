@@ -1467,6 +1467,10 @@ results, reported per item:**
       (better lighting, spill suppression, or a lower similarity with
       accepted incomplete background removal), not something the app can
       fix in the abstract.
+      **UPDATE (2026-09-14, later the same day): fixing (2) is now RESOLVED,
+      built** — see this section's "New, DECIDED" entry below for the full
+      build/verification writeup (`src/chromaKey.ts`, a real graduated
+      YUV-chroma-based key, pixel-verified against real FFmpeg output).
 
 **New, DECIDED (2026-09-14): scope and build the live-preview accuracy fix
 now, not backlogged.** The live preview's chroma-key rendering must match
@@ -1492,6 +1496,78 @@ RGB-Euclidean-distance hard cutoff. Requirements:
 - Goal: once this ships, a similarity/blend setting that looks safe in the
   live preview should reliably mean it's actually safe on export — closing
   the exact trust gap that let this whole bug hide for three rounds.
+
+  **RESOLVED (2026-09-14), built.** New `src/chromaKey.ts` — a standalone,
+  dependency-free module (`applyChromaKey(buffer, settings)`, operating on a
+  plain `{width,height,data}` RGBA pixel buffer so it needs no real DOM
+  `ImageData` and is directly unit-testable from Node) implementing FFmpeg's
+  real `chromakey` filter algorithm, studied from `libavfilter/
+  vf_chromakey.c` directly rather than approximated from the filter's
+  documentation: distance is measured in YUV **chroma** (U/V) space only
+  (never luma, never plain RGB) using the same BT.601 full-range RGB->YUV
+  coefficients FFmpeg's own `RGB_TO_U`/`RGB_TO_V` macros use for the key
+  color; each pixel's distance is averaged over a 3x3 neighborhood (a
+  separable box blur in the implementation, for real-time performance, not
+  a naive 9-sample-per-pixel loop); and `similarity`/`blend` produce a real
+  graduated alpha (linear ramp between fully transparent and fully opaque)
+  instead of the old hard RGB-Euclidean-distance cutoff, which ignored
+  `blend` entirely. `PreviewPlayer.tsx`'s `drawClipVisual` now calls this
+  instead of its old inline formula — one call-site change, no change to
+  the canvas-tainted fallback behavior around it.
+  - **A real methodology trap worth recording, not just the result:**
+    partway through, a from-scratch empirical calibration against this
+    app's own bundled `ffmpeg-static` binary (using synthetic flat-color
+    test patches at controlled, known distances from the key color)
+    disagreed with the literal transcribed source formula by a consistent
+    ~5.7x scale factor — a serious enough discrepancy that the constant was
+    changed to match the calibration at first. Retesting against a
+    *realistic* clip (compressed, noisy, vignette-lit — not an isolated
+    flat swatch) showed the "calibrated" constant was actually **worse**
+    (18.1 mean alpha error vs. the original formula's 10.4) — tracked down
+    to a real, physical effect rather than a bug: `diff` is a nonlinear
+    function of noisy per-pixel chroma, and clamping the alpha ramp at 0
+    means random noise (always present in real, compressed footage) pushes
+    the *average* alpha up for any pixel already within one blend-width of
+    the threshold — noiseless isolated calibration swatches can't see this,
+    so they systematically under-measure real-world distance. The literal,
+    three-times-independently-corroborated source formula was kept; the
+    isolated-calibration detour is documented in `chromaKey.ts`'s header so
+    a future round doesn't rediscover the same trap.
+  - **Verification status:** `npm run typecheck` and `npm run build` both
+    succeed. New `scripts/verifyChromaKey.mjs` (committed, runnable via
+    `node scripts/verifyChromaKey.mjs`, no binary fixtures needed — it
+    builds its own synthetic clip on each run via the bundled FFmpeg)
+    pixel-compares the new algorithm's output against real FFmpeg
+    `chromakey` output on a realistic synthetic clip (green screen,
+    vignette-lit background, skin-tone subject box, per-pixel noise, real
+    H.264 compression at CRF 18 — the same ingredients this project's own
+    diagnostic rounds found necessary to reproduce realistic edge
+    behavior), at Dan's actual real problem settings
+    (`similarity=0.2 blend=0.1`) and at a cleaner, more typical setting
+    (`similarity=0.1 blend=0.05`). Results: mean per-pixel alpha error
+    dropped from 93.2/255 (old hard-cutoff algorithm) to 10.4/255 (new
+    algorithm) at Dan's real settings — a **9x reduction** — and from
+    185.2/255 to 0.3/255 (a **676x reduction**) at the cleaner setting,
+    where the old algorithm's binary all-or-nothing cutoff was especially
+    wrong. **Not done: testing against the literal file named in this
+    round's ask** (`assets\video\0befbb2c-dcaf-4ba3-8d20-fc1767bf1d1e.mp4`
+    in the `just-a-test-fbcdb697` project) — that project folder no longer
+    exists in either current library location
+    (`DansVideoEditor\Dan's Video Studio\Projects` or the OneDrive-redirected
+    `Documents\Dan's Video Studio\Projects`) and isn't in the Windows
+    Recycle Bin either; it was a throwaway diagnostic project (explicitly
+    "no real data" per its own Completed Tasks entry above) and appears to
+    have been deleted since that round. Its final *exported* output files
+    are still sitting in Dan's Downloads folder (`just a test-export.mp4`,
+    `just a test-export_not reveresed.mp4`) but those are already-composited
+    final video, not useful for isolating one clip's own alpha channel.
+    Verification instead used a realistic synthetic reconstruction built
+    with Dan's exact real settings and the same class of problem (skin-tone
+    subject vs. green background, compression noise) — see above. **Not
+    yet done: a live UI click-through** confirming the preview now visually
+    matches export on a real green-screen clip in Dan's hands — worth doing
+    once he has a green-screen clip to try, alongside everything else still
+    open in Phase 6.
 - **Item 5 (library relocation): a real, serious bug — surfaced mid-move
   and needs to be the priority fix.** Dan's "Move Library" attempt threw
   `EPERM: operation not permitted, rmdir` on a `promptlab` folder inside a
@@ -1751,11 +1827,16 @@ Technical Notes / Blockers
   real graduated/YUV-based key matching FFmpeg) and the "this shot needs
   better lighting/a different similarity" fact are real next steps, but
   neither is a safe one-line patch to land alongside just having found
-  this. **Next step, if picked back up:** reconcile `PreviewPlayer.tsx`'s
-  chroma-key math with FFmpeg's real `chromakey` filter (or otherwise make
-  the live preview an honest predictor of the export) — that's the part
-  that's an actual app bug; the specific-shot keyability is a footage
-  problem, not a code one.
+  this.
+  **UPDATE (2026-09-14, later the same day): the "make the preview
+  trustworthy" half is now RESOLVED, built.** `src/chromaKey.ts` reimplements
+  FFmpeg's real YUV-chroma-based, graduated-`blend` algorithm and
+  `PreviewPlayer.tsx` now uses it — see Current Objective's live-preview
+  accuracy fix entry above for the full build/verification writeup (a 9x
+  reduction in measured pixel-level alpha error on a realistic synthetic
+  clip at Dan's real problem settings). The "this shot needs better
+  lighting/a different similarity" half remains a footage problem, not a
+  code one, and stays as-is — nothing to fix there.
 - **NEW, urgent (2026-09-13): library relocation (item 5) has a real bug
   that left Dan's real project list broken in the UI, though his files are
   confirmed physically safe.** See Current Objective above for the full

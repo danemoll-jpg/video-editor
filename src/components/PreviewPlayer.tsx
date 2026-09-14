@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AssetKind, Clip, Crop, Timeline, Track, Transform } from '../api'
+import { applyChromaKey } from '../chromaKey'
 
 // The live preview compositor — draws every visible frame onto one <canvas>,
 // approximating the same layering rules videoExportManager.ts uses for the
@@ -13,7 +14,13 @@ import type { AssetKind, Clip, Crop, Timeline, Track, Transform } from '../api'
 //   2. Chroma-key pixel processing needs `canvas.getImageData`, which throws
 //      if the browser considers the canvas "tainted"; caught below, in which
 //      case that one clip just previews unkeyed (still keyed correctly in
-//      the actual export).
+//      the actual export). The chroma-key *algorithm* itself, however, is no
+//      longer a simplification as of the live-preview accuracy fix (TODO.md)
+//      — `../chromaKey.ts` reimplements FFmpeg's real `chromakey` filter
+//      (YUV-chroma-plane distance, graduated similarity/blend, not a plain
+//      RGB hard cutoff), pixel-verified against real FFmpeg output, so a
+//      setting that looks safe here should reliably mean it's actually safe
+//      on export.
 //
 // A clip's `reverse` used to be a *third* simplification (browsers can't
 // play an HTML5 <video>/<audio> backwards, so it always previewed forward) —
@@ -288,18 +295,10 @@ export default function PreviewPlayer({
         octx.clearRect(0, 0, sw, sh)
         octx.drawImage(sourceEl, 0, 0, sw, sh)
         const imageData = octx.getImageData(0, 0, sw, sh)
-        const { color, similarity } = clip.chromaKey
-        const kr = parseInt(color.slice(1, 3), 16)
-        const kg = parseInt(color.slice(3, 5), 16)
-        const kb = parseInt(color.slice(5, 7), 16)
-        const threshold = similarity * 441.7 // similarity (0..1) scaled by the max possible RGB distance
-        const d = imageData.data
-        for (let i = 0; i < d.length; i += 4) {
-          const dr = d[i] - kr
-          const dg = d[i + 1] - kg
-          const db = d[i + 2] - kb
-          if (Math.sqrt(dr * dr + dg * dg + db * db) < threshold) d[i + 3] = 0
-        }
+        // Real FFmpeg-matching algorithm (YUV-chroma distance, graduated
+        // similarity/blend) — see ../chromaKey.ts's header for why this
+        // replaced the old plain-RGB hard-cutoff approximation.
+        applyChromaKey(imageData, clip.chromaKey)
         octx.putImageData(imageData, 0, 0)
         doDraw(off)
       } catch {

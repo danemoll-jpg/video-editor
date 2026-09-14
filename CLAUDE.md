@@ -248,3 +248,32 @@ actual filter, not approximated), including real `blend` support, verified
 by pixel-level comparison against real FFmpeg output on Dan's actual
 problem clip. See TODO.md's Current Objective (Item 3) for the full
 pixel-verified writeup and the new preview-fix requirements.
+
+**Live-preview chroma-key accuracy fix — RESOLVED (2026-09-14), built.**
+New `src/chromaKey.ts` reimplements FFmpeg's real `chromakey` filter (YUV-
+chroma-plane distance using its own BT.601 full-range RGB->YUV coefficients,
+3x3-neighborhood-averaged, graduated `similarity`/`blend` ramp — not the old
+hard RGB-Euclidean-distance cutoff, which ignored `blend` entirely);
+`PreviewPlayer.tsx`'s `drawClipVisual` now calls it. Verified via new
+`scripts/verifyChromaKey.mjs` (committed, run with `node
+scripts/verifyChromaKey.mjs` — builds its own realistic synthetic clip via
+the bundled FFmpeg each run, no binary fixtures needed): a **9x reduction**
+in measured mean per-pixel alpha error vs. real FFmpeg output at Dan's real
+problem settings (similarity=0.2/blend=0.1), and 676x at a cleaner, typical
+setting. Dan's literal original problem clip/project
+(`just-a-test-fbcdb697`) no longer exists on disk (not in either current
+library location or the Recycle Bin — apparently deleted as throwaway test
+data since the root-cause round) so this round's pixel verification used a
+faithful synthetic reconstruction (same real settings, same class of
+problem — skin-tone subject vs. green background, real H.264 compression
+noise) instead of the literal file, documented as a deliberate substitution
+rather than silently claimed as the original. A real methodology trap
+surfaced and is documented in `chromaKey.ts`'s header: isolated, noise-free
+calibration colors measure a smaller chroma distance than the same color
+sitting in real, noisy footage (clamping the alpha ramp at 0 makes random
+noise push average alpha up, never down), which made an initial "calibrated"
+constant perform *worse* on a realistic clip than the literal,
+three-times-independently-corroborated source formula — kept the latter.
+See TODO.md's Current Objective for the full writeup. **Not yet done: a
+live UI click-through** confirming the preview visually matches export on a
+real green-screen clip in Dan's own hands.
