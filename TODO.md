@@ -1260,9 +1260,13 @@ results, reported per item:**
   reversal in the output file — worth doing once the badge is in, so both
   get confirmed together. **RESOLVED (2026-09-13): badge built** — see
   "Phase 6 continued — Dan's first-pass findings, addressed" above.
-- **Item 3 (chroma key on export): REAL DIAGNOSTIC DATA IN HAND
-  (2026-09-14) — first actual lead on this bug, after two rounds of
-  synthetic tests that couldn't reproduce it.** Dan supplied a real
+- **Item 3 (chroma key on export): ROOT CAUSE CONFIRMED (2026-09-14) — see
+  the dated update at the end of this item's writeup below for the
+  breakthrough** (tested directly against Dan's real source clip and real
+  project, not another synthetic reconstruction). Kept below in its
+  original, same-day chronological order, starting from that day's first
+  lead: **REAL DIAGNOSTIC DATA IN HAND** — first actual lead on this
+  bug, after two rounds of synthetic tests that couldn't reproduce it. Dan supplied a real
   `export-diagnostics.log` plus two screenshots (editor preview vs. the
   exported file played in Windows Media Player) from a throwaway test
   project (no real data). **The symptom itself is different from the
@@ -1369,6 +1373,100 @@ results, reported per item:**
     round's chat history / Dan's two uploaded `export-diagnostics.log`
     files for the exact values if the version handed to the coding agent
     needs re-supplying.
+  - **ROOT CAUSE CONFIRMED (2026-09-14) — reproduced for real, against Dan's
+    actual source clip, actual project, and actual exported file.** Not
+    another synthetic guess: this used the literal file at
+    `assets\video\0befbb2c-dcaf-4ba3-8d20-fc1767bf1d1e.mp4` in Dan's real
+    `just-a-test-fbcdb697` project, his exact settings (chromaKey
+    `color=#31a05b similarity=0.2 blend=0.1`, crop `688x435` at `0,29`,
+    scale to `1601x1080`), and — since both were still sitting in his
+    Downloads folder — his own actual already-exported output file
+    (`just a test-export_not reveresed.mp4`, the reverse-off run from the
+    2026-09-14 diagnostics log above), not a re-generated stand-in.
+    - **Why the first two rounds and this round's own first attempt all
+      missed it: the symptom only shows up composited against a bright/busy
+      background, not a flat black one.** Dan's real timeline (read
+      directly from `editor/timeline.json`, not guessed) has a *second*
+      clip — a colorful desert/pyramid background image on "Video 1"
+      (`chromaKey.enabled=false`) sitting *underneath* the green-screen
+      clip on "Video 2". Simulating the export against a plain black
+      canvas (this round's own first pass, and almost certainly both prior
+      synthetic batteries) produced what looked like a clean key — because
+      a dark, partially-erased subject composited over black is nearly
+      invisible. Re-run against Dan's *actual* background image, frame-by-
+      frame decoding of the real exported MP4 shows it plainly: a pale,
+      translucent ghost of Obi-Wan's head/hair/ear hovering over the
+      pyramids — exactly "lighter/washed-out, not gone, not solid" as
+      reported. (Screenshot captured this round for the record; not
+      reproduced here as it's Dan's personal footage.)
+    - **What's actually being erased, pixel-verified:** decoding the real
+      per-clip RGBA alpha channel (before compositing, at 6 timestamps
+      spanning the whole clip) shows the head/hair region is never fully
+      opaque anywhere in the clip — 0% full-opacity coverage in a
+      representative head-area box at every sampled frame, with large
+      chunks (up to ~80% at some frames) fully erased (alpha=0), not just
+      softened at the edges. This is FFmpeg's real `chromakey` filter
+      keying out real, visibly non-green skin/hair/beard pixels (sampled
+      RGB values like `(245,178,151)` — plain tan skin — and `(149,56,31)`
+      — plain brown hair), not a thin anti-aliasing fringe.
+    - **Confirmed by a direct similarity sweep on this exact real clip**
+      (0.05/0.1/0.15/0.2/0.3, blend held at 0.1): the head-region's
+      fully-opaque coverage drops from 92.7% (similarity=0.05) → 54.4%
+      (0.1) → 1.8% (0.15) → **0.0% at Dan's actual 0.2** → 0.0% (0.3) —
+      while the green background itself isn't even fully removed (only
+      ~51–52% transparent) until similarity climbs past ~0.15. For this
+      specific shot there is no similarity/blend value that both fully
+      clears the green screen *and* leaves the actor intact — likely real,
+      shot-specific green-screen lighting/color variance (and H.264
+      compression) putting parts of the actor's actual coloring closer to
+      the key color, in FFmpeg's real color-distance metric, than
+      similarity=0.2 leaves room for. 0.2 is comfortably inside the app's
+      allowed 0.01–1 range and doesn't look like an extreme value in the
+      Clip Inspector's UI, but it's already well past the point where this
+      footage's key starts eating the subject rather than just the
+      background.
+    - **Why this is invisible in the live preview, also pixel-verified, not
+      guessed:** `PreviewPlayer.tsx`'s chroma-key implementation is a
+      *different algorithm* from FFmpeg's real `chromakey` filter — plain
+      RGB Euclidean distance to the key color with a hard cutoff (`similarity
+      * 441.7`, either fully opaque or fully transparent, `blend` isn't
+      used at all), versus FFmpeg's real YUV-chroma-plane-based graduated
+      key. Running the preview's exact formula against the same real frame:
+      at similarity=0.2 its threshold is 88.3 (out of a 0–441.7 RGB-distance
+      scale), and the real head/hair pixels sit at RGB distances of
+      ~150–210 from the key color — comfortably outside that threshold, so
+      the preview leaves roughly 80% of the head fully untouched (matching
+      Dan's "fully vivid/saturated" description) while the same nominal
+      setting, run through FFmpeg's real metric, leaves 0% of it intact.
+      **The two renderers don't just differ in fidelity — for this clip's
+      settings they disagree about which pixels count as "close to the key
+      color" at all,** so nothing in the live preview could have warned Dan
+      that 0.2 was already destroying his subject on export.
+    - **Filter order re-confirmed ruled out, this time on the real file:**
+      re-ran the crop→chromakey→scale reorder (last round's tested-and-
+      rejected theory) directly against this clip — the head-region mean
+      alpha is statistically identical either order (34.2 vs 33.6 out of
+      255); reordering doesn't touch this bug.
+    - **Reverse:** already ruled out by Dan directly, unaffected by any of
+      the above.
+    - **Not applied this round, per the explicit ask to report rather than
+      force a fix:** no changes to `videoExportManager.ts` or
+      `PreviewPlayer.tsx`. This is a real, now-confirmed, two-part finding
+      rather than a one-line patch: (1) this specific clip's green screen
+      doesn't have a similarity/blend value that cleanly separates
+      background from subject at all, and (2) independent of this clip,
+      the live preview's simplified chroma-key algorithm cannot be trusted
+      to show what FFmpeg's real chromakey will actually do, for *any* clip
+      — a value that looks safe while tuning in the editor can silently
+      destroy the subject on export. Fixing (2) means giving the preview a
+      real graduated, YUV-chroma-based key (or otherwise reconciling it
+      with FFmpeg's actual algorithm) rather than patching numbers, which
+      is a meaningfully bigger, separate change — flagged for a dedicated
+      round rather than attempted piecemeal here. Fixing (1) for this
+      specific shot is a footage/lighting problem more than a code one
+      (better lighting, spill suppression, or a lower similarity with
+      accepted incomplete background removal), not something the app can
+      fix in the abstract.
 - **Item 5 (library relocation): a real, serious bug — surfaced mid-move
   and needs to be the priority fix.** Dan's "Move Library" attempt threw
   `EPERM: operation not permitted, rmdir` on a `promptlab` folder inside a
@@ -1611,6 +1709,28 @@ Technical Notes / Blockers
   actual source clip (or a short trimmed copy of it) and run it through the
   real export pipeline directly, since the diagnostics log alone wasn't
   enough to pin this down without the real footage's actual pixel data.
+  **UPDATE (2026-09-14, same day): ROOT CAUSE CONFIRMED, against Dan's
+  actual source clip and actual project this time — see Current Objective's
+  Item 3 above for the full pixel-verified writeup.** Two-part finding: (1)
+  this specific green-screen shot has no `similarity`/`blend` value that
+  cleanly separates the background from the actor — at Dan's actual
+  similarity=0.2, FFmpeg's real `chromakey` filter already erases 100% of a
+  representative head-area box's full-opacity coverage (verified by
+  decoding the real alpha channel across the whole clip), and (2) the live
+  preview never showed this because `PreviewPlayer.tsx`'s chroma-key
+  algorithm is a structurally different one from FFmpeg's real filter (hard
+  RGB-distance cutoff, no blend, vs FFmpeg's graduated YUV-chroma key) —
+  the same nominal settings mean very different things to each renderer.
+  **No code changed this round, per the explicit ask to report rather than
+  force a fix** — both the "make the preview trustworthy" fix (give it a
+  real graduated/YUV-based key matching FFmpeg) and the "this shot needs
+  better lighting/a different similarity" fact are real next steps, but
+  neither is a safe one-line patch to land alongside just having found
+  this. **Next step, if picked back up:** reconcile `PreviewPlayer.tsx`'s
+  chroma-key math with FFmpeg's real `chromakey` filter (or otherwise make
+  the live preview an honest predictor of the export) — that's the part
+  that's an actual app bug; the specific-shot keyability is a footage
+  problem, not a code one.
 - **NEW, urgent (2026-09-13): library relocation (item 5) has a real bug
   that left Dan's real project list broken in the UI, though his files are
   confirmed physically safe.** See Current Objective above for the full

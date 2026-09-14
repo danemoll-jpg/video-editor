@@ -215,23 +215,34 @@ project folder is trashed as one unit). Verified with a pixel-level scripted
 test (decoding real frames, not just checking FFmpeg's exit code) confirming
 genuine frame-order reversal — see TODO.md's Completed Tasks for the full
 record. Mirror needed no equivalent work; its live preview (a CSS flip)
-already works correctly. **Chroma-key-on-export (2026-09-14 round):** Dan's
-real diagnostic log ruled out `reverse` as a cause (re-tested with reverse
-off, same washed-out result — it's the original bug on its own). The
-filter-order lead it suggested (chroma key applied after scaling, so
-upscale interpolation could shift keyed pixels off-color) was tested with
-real pixel-level verification — decoding actual output pixels/alpha values
-from real, compressed, realistically-lit synthetic footage, not just
-compiling the filter graph — and did **not** hold up: reordering
-(`crop, chromakey, scale` instead of `crop, scale, chromakey`) produced no
-measurable improvement across three separate measurements, and it would
-also introduce a real, separate edge-fringing risk (scaling straight RGBA
-after a partial key can darken semi-transparent edges) with nothing to show
-for the trade. **Not applied** — `videoExportManager.ts`'s filter order is
-unchanged. See TODO.md's Current Objective (Item 3) for the full test
-methodology and results, and Technical Notes for what's actually needed
-next (Dan's real source clip, not another synthetic reconstruction — two
-rounds of those have now failed to reproduce his exact symptom). See
-TODO.md's Current Objective and Completed Tasks for the full per-item
-record, including Dan's own click-through of the reverse preview, which is
-still outstanding.
+already works correctly. **Chroma-key-on-export — ROOT CAUSE CONFIRMED
+(2026-09-14, second round that day):** Dan's real diagnostic log first
+ruled out `reverse` as a cause (re-tested with reverse off, same
+washed-out result), and a filter-order lead the log suggested (chroma key
+applied after scaling) was tested with real pixel-level verification and
+did **not** hold up (no measurable improvement from reordering, and a real
+new edge-fringing risk to boot) — **not applied**, `videoExportManager.ts`'s
+filter order is unchanged. The actual breakthrough came from testing
+directly against Dan's real source clip and real project (not another
+synthetic reconstruction) — decoding the actual alpha channel of the
+literal file he'd already exported: at his real settings
+(`similarity=0.2 blend=0.1` on this specific green-screen shot), FFmpeg's
+real `chromakey` filter doesn't just clean the background — it fully
+erases the actor's head/hair (0% full-opacity coverage across the whole
+clip, verified frame-by-frame), and there's no similarity/blend value for
+this footage that cleans the background without doing that. It never
+showed up in the live preview because `PreviewPlayer.tsx`'s chroma-key
+implementation is a structurally different algorithm from FFmpeg's real
+one (a hard RGB-distance cutoff with no blend, vs. FFmpeg's graduated
+YUV-chroma-based key) — the same nominal `similarity` value means very
+different things to the two renderers, so the preview cannot be trusted to
+predict what a given setting will do on export, for any clip. **No code
+changed this round** — this is a two-part finding (this shot's own
+keyability, plus the preview/export algorithm mismatch as a real, separate
+app bug worth its own round) rather than a one-line patch, per the
+explicit ask to report rather than force a fix. See TODO.md's Current
+Objective (Item 3) for the full pixel-verified writeup and Technical Notes
+for the recommended next step (reconciling the preview's chroma-key math
+with FFmpeg's real filter). See TODO.md's Current Objective and Completed
+Tasks for the full per-item record, including Dan's own click-through of
+the reverse preview, which is still outstanding.
