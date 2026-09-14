@@ -2031,22 +2031,25 @@ Technical Notes / Blockers
   relocation incident — deleted for good this time, with Dan's explicit
   go-ahead, as part of that fix. See "Phase 6 continued — Dan's first-pass
   findings, addressed" in Completed Tasks.
-- **NEW, flagged not fixed (2026-09-14): a stale duplicate "teafa" project
-  folder at the OLD (pre-relocation) default library location.** Noticed
-  while cleaning up this round's own autosave-fix verification's throwaway
-  test project (which this round deliberately ran against an isolated,
-  throwaway `--user-data-dir`, specifically to avoid any risk of colliding
-  with Dan's real, possibly-already-open app/library — see the URGENT
-  item's verification write-up above) — a `teafa-3382c3aa` folder still
-  exists under `Documents/Dan's Video Studio/Projects/` (the pre-relocation
-  default location) even though Dan's library was relocated to
+- **Stale duplicate "teafa" project folder at the OLD (pre-relocation)
+  default library location (2026-09-14) — CLOSED, confirmed harmless test
+  data, not investigated further.** Noticed while cleaning up this round's
+  own autosave-fix verification's throwaway test project (which this round
+  deliberately ran against an isolated, throwaway `--user-data-dir`,
+  specifically to avoid any risk of colliding with Dan's real,
+  possibly-already-open app/library — see the URGENT item's verification
+  write-up above) — a `teafa-3382c3aa` folder still exists under
+  `Documents/Dan's Video Studio/Projects/` (the pre-relocation default
+  location) even though Dan's library was relocated to
   `DansVideoEditor\Dan's Video Studio` and that same `teafa-3382c3aa`
-  project exists there too. Likely leftover from `libraryRelocationManager
-  .ts`'s cross-drive copy-then-delete-original fallback not fully cleaning
-  up the source after copying. **Not touched or investigated further this
-  round** — this is Dan's real project data and determining which copy (if
-  either has diverged) is authoritative needs real care, not a guess; a
-  separate task was flagged for it rather than deleting anything here.
+  project exists there too. Initially flagged as a separate task pending
+  investigation (which copy is authoritative), out of caution since it
+  looked like real project data — **Dan confirmed directly it's just test
+  data, doesn't matter.** Attempted to delete the stale copy directly as
+  cleanup; this sandbox's permissions blocked deleting outside the repo
+  (same restriction noted elsewhere in this file), so it's still sitting
+  there — harmless, safe to delete via the OS or the app's own "Delete
+  Project" whenever convenient, not worth further attention.
 - **Correction, now actually applied (2026-09-12).** This file previously
   claimed the app was renamed "Dan Video Studio" → "Dan's Video Studio,"
   including the on-disk folder path, and verified via a live window title —
