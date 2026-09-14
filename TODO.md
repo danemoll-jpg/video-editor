@@ -1310,6 +1310,29 @@ rest is broken. Reporting each separately, as usual:
     pixel-perfect mouse accuracy at whatever zoom level happens to be
     active. Revisit if this doesn't turn out to be what actually helps.
 
+**New (2026-09-13): real reverse live preview via a pre-rendered proxy.**
+DECIDED — build now, not backlog. Mirror needs no change; it already
+previews correctly live via a CSS flip, no FFmpeg involved. Reverse is the
+one that can't preview live in a browser (no reliable negative playback
+rate), so instead of only the badge:
+- When a clip's `reverse` is turned on, kick off a background FFmpeg job
+  that renders just that clip's *currently trimmed range*, reversed, into
+  a small proxy file cached under the project (e.g.
+  `editor/proxies/<clipId>-reversed.mp4`) — not the whole source file, to
+  keep render time reasonable.
+- The live preview player uses that proxy (played normally forward, which
+  now visually appears reversed) whenever `reverse` is on for that clip;
+  show a clear "generating preview…" state while the proxy renders, since
+  this won't be instant.
+- **Cache invalidation:** if the clip's trim changes after a proxy exists,
+  the proxy is stale and must regenerate before the next preview.
+- **Cleanup:** delete the proxy when reverse is turned off, when the clip
+  is deleted, and when the project is deleted — proxies shouldn't
+  accumulate indefinitely on disk.
+- Export can either reuse a valid cached proxy matching the current trim,
+  or just regenerate cleanly with the existing `reverse` FFmpeg filter —
+  either is fine; correctness matters more than reusing the cache.
+
 Background & Key Decisions
 
 **RESOLVED — built all four Phase 3 subsystems together** (2026-09-12),
@@ -1442,16 +1465,21 @@ Technical Notes / Blockers
   destructive delete ran there. The app now points at that copy. 9 stray/
   residue project folders (7 matching this file's own documented
   Playwright-test naming pattern, 2 small empty unlabeled ones) were
-  deleted from both locations with Dan's explicit go-ahead — his real
-  project list is now exactly "sfh" and "teafa". Root cause fixed: every
-  project now moves individually with per-project verification, and the
-  preference switches only once *every* project is confirmed fully moved,
-  with a clean rollback (restoring the old location exactly) on any
-  failure — verified against a synthetic fixture reproducing the original
-  failure mode exactly (see Completed Tasks). Dan can try "Move Library"
-  again whenever he wants; a real click-through of the fixed version in the
-  live app (as opposed to the synthetic-fixture verification this round
-  used) is still worth doing once he has a moment.
+  deleted from both locations with Dan's explicit go-ahead — his project
+  list is now exactly "sfh" and "teafa". **CONFIRMED (2026-09-13): these
+  two were also just testing/feature-trying projects, not real work — no
+  actual data was ever at risk in this whole incident.** Root cause is
+  still worth having fixed regardless, since real project data will exist
+  eventually: every project now moves individually with per-project
+  verification, and the preference switches only once *every* project is
+  confirmed fully moved, with a clean rollback (restoring the old location
+  exactly) on any failure — verified against a synthetic fixture
+  reproducing the original failure mode exactly (see Completed Tasks). Dan
+  can try "Move Library" again whenever he wants; a real click-through of
+  the fixed version in the live app (as opposed to the synthetic-fixture
+  verification this round used) is still worth doing once he has a moment,
+  though there's no urgency now that it's confirmed nothing real was ever
+  on the line.
 - **Safety lesson from testing item 5 (library relocation) — worth keeping
   on record.** An early draft of this round's relocation test ran
   `relocateLibrary` directly against the real default library location to

@@ -195,6 +195,13 @@ for the still-unresolved chroma-key-on-export bug (`videoExportManager.ts`/
 FFprobe'd codec/pixel-format/resolution on every export, waiting on Dan's
 real repro to produce a log to act on); and a small visible timeline badge
 for the Reverse/Mirror clip properties, so a checked setting is confirmed
-without needing to export first. See TODO.md's Current Objective and
-Completed Tasks for the full per-item record, including the one item
-(chroma key) still not confirmed fixed.
+without needing to export first. **Confirmed (2026-09-13): "sfh" and
+"teafa" were also just test/feature-trying projects — no real project data
+was ever actually at risk in the library-relocation incident.** **New work,
+decided now rather than backlogged:** a real live preview for Reverse (not
+just the badge) via a background-rendered proxy — reverse a clip's trimmed
+range into a small cached file and preview that instead, since browsers
+can't play video backward directly. Mirror needs no equivalent work; its
+live preview (a CSS flip) already works correctly. See TODO.md's Current
+Objective and Completed Tasks for the full per-item record, including the
+one item (chroma key) still not confirmed fixed.
