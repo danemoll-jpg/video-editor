@@ -159,8 +159,16 @@ built app (isolated `--user-data-dir`, so the test can't collide with
 Dan's real, possibly-open app/library): type, switch tabs within ~150ms
 (no waiting for the debounce), switch back, text/draft intact and
 confirmed to have hit disk via a full app reload. See TODO.md's Current
-Objective for the full root-cause and verification writeup. **Not yet
-done: Dan's own hands-on confirmation.**
+Objective for the full root-cause and verification writeup. **CONFIRMED by
+Dan's own hands-on testing (2026-09-14).** Closed.
+
+**NEW PRIORITY (2026-09-14), jumps ahead of Phase 7: AI-generated
+scene/shot outline from the script**, using Phase 4's existing AI
+Assistant API plumbing. Generates both scenes and a first-pass shot
+breakdown (title/description only — no Grok prompt text, that stays a
+separate Prompt Lab step). If scenes already exist, must ask before
+replacing rather than silently picking add-or-replace. See TODO.md's
+Current Objective for full scope.
 
 This is **Dan's Video Studio** — a personal desktop app covering the full
 creative process (idea → script → scenes → shots → AI prompts → generated

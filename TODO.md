@@ -1279,10 +1279,37 @@ saved, and never realized he needed to.
     verification) and confirmed it still displays correctly after switching
     tabs away and back — the sent-message path, unaffected by any of this
     round's changes. All assertions passed; the throwaway test project was
-    deleted (trashed) afterward. **Not yet done: Dan's own hands-on
-    confirmation** that the fix holds up in his actual daily use — this
-    was Claude-driven Playwright automation, same caveat as every other
-    phase's UI verification in this file.
+    deleted (trashed) afterward. **CONFIRMED by Dan (2026-09-14), his own
+    hands-on testing.** Closed.
+
+**NEW, PRIORITY (2026-09-14), jumps ahead of Phase 7 per Dan's call:
+AI-generated scene/shot outline from the script.** Gestured at in the
+original ChatGPT-authored plan ("AI assistance could help break scenes
+into appropriately sized shots") but never built — Phase 2 shipped
+manual-only. Now natural to build since Phase 4's AI Assistant already has
+real API access wired up.
+- A "Generate Scenes & Shots" action on the Script tab, using the
+  project's existing script text as input to a real Anthropic API call
+  (same plumbing/API key as the rest of the AI Assistant — real per-use
+  cost, already accepted).
+- **Generates both scenes and a first-pass shot breakdown within each
+  scene** (not scenes-only) — per Dan's explicit choice. Shots get a
+  title/description like manually-created ones; **do not** auto-populate
+  a shot's Grok prompt field from this — that's a separate, more detailed
+  step that belongs in the Prompt Lab, not this outline pass. Generated
+  shots default to "Planned" status, same as manually-created ones.
+- **If the project already has scenes, ask before replacing** — per Dan's
+  explicit choice, not a silent default either way. Offer both real
+  choices: add the newly generated scenes on top of the existing set, or
+  replace the existing set entirely (with the existing set's own data
+  actually gone if replace is chosen — be genuinely careful here, per
+  this project's repeated lesson about destructive operations on real
+  project data; trash/back up the replaced scenes rather than a bare
+  overwrite, if that's easy to do consistent with how deletes already work
+  elsewhere in the app).
+- Once created, generated scenes/shots are just regular scenes/shots —
+  editable/reorderable/deletable through the existing Scenes & Shots tab
+  UI like any other, no special "AI-generated" marker needed.
 
 **Phase 3 is now considered complete.** The SFX/ElevenLabs typing bug
 (investigated above) turned out to be intermittent, not a real defect —
