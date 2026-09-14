@@ -1196,37 +1196,50 @@ every recent feature — not re-asked this time, but noted for the record):
 two fixes to the scene/shot outline generator, found via Dan's real use.**
 
 1. **Preserve structured script detail verbatim instead of summarizing it
-   away.** Dan's real script format is rich and already shot-structured —
-   e.g. `**S17 | 0:55–0:58 | FULL** 🎵 *"Making distance disappear."* Wide
-   of the shared couch. Abi is very slightly translucent... *Motion:
-   static, gentle.* **COMP NOTE:** Abi layer at 88% opacity, feathered
-   edge.` — with an explicit shot code, exact timing, a quoted lyric line,
-   motion notes, and comp notes all inline. The current generator throws
-   this away and writes a generic paraphrase instead. Fix: update
-   `generateSceneOutline`'s system prompt to explicitly instruct the model
-   to preserve, verbatim, any timestamps/time ranges, quoted or
-   music-marked lyric lines, explicit shot/scene codes, and clearly-marked
-   notes (e.g. "COMP NOTE:", "Motion:") found in the script text — fold
-   them directly into the generated shot's description rather than
-   summarizing over them. Use Dan's exact example above as a concrete test
-   case, not just a general instruction to "do better."
-2. **A direct path from a shot to drafting its Grok prompt with AI help**,
-   instead of Dan manually copying context between tabs. Scope: add a new
-   link, one Grok Prompt Lab entry per shot (matches the Prompt Lab's
-   existing design, which already tracks multiple rated attempt-versions
-   *within* one entry — no need for a second, competing versioning
-   concept). A "✨ Draft Grok Prompt" button on each shot in the Scenes &
-   Shots tab: if the shot has no linked entry yet, create one, seed its
-   starting prompt draft from the shot's title/description (which, once
-   fix 1 above ships, will already carry forward any preserved
-   lyric/timing/comp-note detail), link it to the shot, then navigate to
-   Prompt Lab → Grok with that entry open and its AI Assistant chat panel
-   expanded/focused, ready to iterate. If already linked, just navigate
-   straight to the existing entry — no duplicate. **Explicitly not
-   addressed this round:** whether the shot's own older standalone
-   `promptText`/Copy-Prompt field (from Phase 2) should be deprecated or
-   merged with this new flow — flagging that as a real open question for
-   later, not resolving it now to avoid scope creep on this round.
+   away.** **CONFIRMED by Dan (2026-09-14), working.** Dan's real script
+   format is rich and already shot-structured — e.g. `**S17 | 0:55–0:58 |
+   FULL** 🎵 *"Making distance disappear."* Wide of the shared couch. Abi
+   is very slightly translucent... *Motion: static, gentle.* **COMP
+   NOTE:** Abi layer at 88% opacity, feathered edge.` — and the generated
+   shots now carry that detail through. Closed.
+2. **REVISED AGAIN (2026-09-14) — one more change to item 2's design
+   before it's handed off, so the coding agent builds the right thing the
+   first time.** Dan reconsidered the auto-send behavior below before it
+   was built: he wants a review step before anything actually goes to the
+   API, "just to make sure nothing was missed or forgotten."
+   - **Final design:** on first click for an unlinked shot, assemble the
+     draft-request text (shot's title/description including fix 1's
+     preserved verbatim detail, plus the project's Idea notes as
+     style/rules context — see below) and **place it directly into the AI
+     Assistant's message composer, unsent.** Expand/focus the panel so Dan
+     sees it sitting there ready to review or edit — do NOT call the
+     Anthropic API automatically. Dan reviews (and can freely edit) the
+     composed request, then sends it himself, the normal way, whenever
+     he's satisfied with it.
+   - **Once Dan sends it and a real response comes back, auto-insert that
+     response directly into the entry's prompt text field** (the same
+     effect as clicking "Insert," done for him) — confirmed explicitly:
+     yes, still auto-insert, only the *request* needed a human review step,
+     not the result.
+   - This replaces the earlier "automatically send an initial AI Assistant
+     request... no typing required" design below, which is now superseded
+     — kept as the original record, not deleted, but not what to build.
+   - **DECIDED (2026-09-14), same round: pull in the project's Idea notes
+     as style/rules context for this composed request.** Dan: the
+     project's established style/visual rules ("the bible") should already
+     inform a drafted Grok prompt, not be something he has to re-explain
+     each time. V1 of this: prepend the project's Idea tab notes (if any
+     exist — proceed normally with none, don't block or error) as context
+     within the composed (still-unsent) request text. Bigger ideas raised
+     in the same breath (pulling in Grok recipes, prior successful prompt
+     patterns, etc.) are NOT part of this fix — Idea notes only, for now;
+     revisit the richer version separately later if wanted.
+   - **Scope boundary, unchanged:** this only applies to the *first* click
+     on an unlinked shot. Once linked, clicking still just navigates to the
+     existing entry (already correct) — never re-triggers a fresh
+     auto-draft on top of whatever Dan may have since edited manually.
+   - The shot's older standalone `promptText`/Copy-Prompt field question
+     from the original scope is still explicitly not being addressed here.
 
   **BUILT (2026-09-14), both items — not yet confirmed by Dan's own hands,
   per this project's normal pattern.** Reporting each separately, as asked:

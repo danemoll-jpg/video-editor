@@ -147,18 +147,24 @@ labeled notes — verbatim inside a generated shot's description rather than
 summarizing over it, with Dan's own real example embedded as the
 illustration. (2) A "✨ Draft Grok Prompt" button on each shot in Scenes &
 Shots (`ShotCard.tsx`) creates (or reuses) that shot's one linked Grok
-Prompt Lab entry — new `Shot.linkedGrokEntryId` field — seeding its prompt
-from the shot's title/description, then navigates to Prompt Lab → Grok with
-that entry expanded and its AI Assistant panel already expanded/focused
-(new `autoOpen`/`autoExpand` props on `AiAssistantPanel`/`PromptEntryCard`,
-driven by a `promptLabFocusEntryId` in `ProjectView.tsx`) — no manual
-copy-between-tabs, and no duplicate entry on a repeat click. Deliberately
-untouched: the shot's older standalone `promptText`/Copy-Prompt field. See
-TODO.md's Current Objective for the full built/verified record — what's
-still open is Dan's own click-through (both items) and a real model-call
-test of item 1 against his actual, messier scripts (not just the one worked
-example), same "don't spend Dan's money without him present" discipline as
-every prior AI-calling feature's rollout.
+**Item 1 (verbatim script-detail preservation) — CONFIRMED by Dan
+(2026-09-14), working.** Closed.
+
+**Item 2 (shot → Grok prompt) — REVISED AGAIN (2026-09-14), final design
+before handoff.** Dan reconsidered before this was built: he wants a
+review step before anything goes to the API. **Final design:** on first
+click for an unlinked shot, assemble the draft-request (shot
+title/description with fix 1's preserved detail, plus the project's Idea
+notes as style/rules context) and place it **unsent** into the AI
+Assistant's composer, expanded/focused — no automatic API call. Dan
+reviews/edits, sends it himself when ready. Once he sends and a response
+comes back, **that response still auto-inserts into the entry's prompt
+field** (confirmed explicitly — only the outgoing request needed a human
+checkpoint, not the result). Idea notes context: v1 only, richer context
+(recipes, prior patterns) explicitly deferred. Scope boundary unchanged:
+only the first click on an unlinked shot triggers this; an already-linked
+shot still just navigates, never re-drafts over Dan's own edits. See
+TODO.md's Current Objective (item 2) for full detail.
 
 **URGENT, PRIORITY data-loss bug — RESOLVED (2026-09-14), built and
 verified.** Dan lost an AI Assistant conversation and typed Idea notes
