@@ -53,6 +53,17 @@ export default function EditorView({ projectId, projectName, assets }: Props) {
     }
   }, [projectId])
 
+  // A reverse-proxy render (see editorManager.ts) finishes outside of any
+  // IPC call this view itself awaited — this is what picks up that
+  // pending → ready/error transition (and any other out-of-band timeline
+  // change) once it happens, rather than leaving the UI showing "generating…"
+  // forever until the next unrelated edit happens to re-fetch the timeline.
+  useEffect(() => {
+    return window.api.onTimelineUpdated((updatedProjectId) => {
+      if (updatedProjectId === projectId) window.api.getTimeline(projectId).then(setTimeline).catch(() => {})
+    })
+  }, [projectId])
+
   const assetById = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets])
   const assetKindById = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, a.kind])), [assets])
 

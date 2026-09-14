@@ -62,10 +62,14 @@ browser treating it as cross-origin.
   (FFprobe metadata lookups), `electron/videoRuntime.ts` (resolves the
   bundled FFmpeg/FFprobe binaries), `electron/mediaProtocol.ts` (the
   `media://` protocol the renderer's preview player uses to actually play a
-  file), and (Phase 6 continued) `electron/audioExtractor.ts` (the one
+  file), (Phase 6 continued) `electron/audioExtractor.ts` (the one
   other FFmpeg call site besides `VideoExportManager` — pulls a file's
   audio track out via `-vn`, used by `ProjectManager.extractAudioAsset`'s
-  "Extract Audio" asset action). Library relocation splits the same way:
+  "Extract Audio" asset action), and `electron/reverseProxyManager.ts` (a
+  third FFmpeg call site — renders a clip's reverse live-preview proxy;
+  `EditorManager`'s "Reverse live-preview proxies" section owns *when* one
+  gets (re)generated/deleted, this file only knows *how* to render one).
+  Library relocation splits the same way:
   `electron/libraryLocation.ts` is pure preference-reading (where the
   library currently lives — a small JSON file under Electron's userData
   folder, read by `projectPaths.ts`'s now-async `projectsRoot()`) and
@@ -109,8 +113,11 @@ browser treating it as cross-origin.
   in place unread rather than deleting them (see that file's header
   comment). `editor/timeline.json` (Phase 6 — the video-editor timeline:
   tracks, clips, project canvas settings; see `EditorManager`'s header
-  comment) and `exports/` (no longer just a placeholder — Phase 6's MP4
-  export writes real files here, which Phase 5's Media Library already
+  comment), `editor/proxies/` (cached reverse live-preview proxies, one
+  small `.mp4` per clip currently rendered — see `EditorManager`'s "Reverse
+  live-preview proxies" section), and `exports/` (no longer just a
+  placeholder — Phase 6's MP4 export writes real files here, which Phase 5's
+  Media Library already
   lists generically).
 - **Styling:** one plain `src/styles.css` with CSS custom properties for the
   (currently dark-only) theme, plain class names — no CSS-in-JS or utility
@@ -197,11 +204,18 @@ real repro to produce a log to act on); and a small visible timeline badge
 for the Reverse/Mirror clip properties, so a checked setting is confirmed
 without needing to export first. **Confirmed (2026-09-13): "sfh" and
 "teafa" were also just test/feature-trying projects — no real project data
-was ever actually at risk in the library-relocation incident.** **New work,
-decided now rather than backlogged:** a real live preview for Reverse (not
-just the badge) via a background-rendered proxy — reverse a clip's trimmed
-range into a small cached file and preview that instead, since browsers
-can't play video backward directly. Mirror needs no equivalent work; its
-live preview (a CSS flip) already works correctly. See TODO.md's Current
-Objective and Completed Tasks for the full per-item record, including the
-one item (chroma key) still not confirmed fixed.
+was ever actually at risk in the library-relocation incident.** **A real
+live preview for Reverse (not just the badge) is now built too:** a
+background-rendered proxy — reverse a clip's currently-trimmed range into a
+small cached file under `editor/proxies/` and preview that instead, since
+browsers can't play video backward directly — regenerating automatically if
+the trim changes and cleaning itself up on reverse-off/clip-delete/
+duplicate (project-delete needs no special handling, since the whole
+project folder is trashed as one unit). Verified with a pixel-level scripted
+test (decoding real frames, not just checking FFmpeg's exit code) confirming
+genuine frame-order reversal — see TODO.md's Completed Tasks for the full
+record. Mirror needed no equivalent work; its live preview (a CSS flip)
+already works correctly. See TODO.md's Current Objective and Completed
+Tasks for the full per-item record, including the one item (chroma key)
+still not confirmed fixed and Dan's own click-through of the reverse
+preview, which is still outstanding.

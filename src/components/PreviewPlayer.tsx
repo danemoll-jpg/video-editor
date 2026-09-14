@@ -15,6 +15,15 @@ import type { AssetKind, Clip, Crop, Timeline, Track, Transform } from '../api'
 //      case that one clip just previews unkeyed (still keyed correctly in
 //      the actual export).
 //
+// A clip's `reverse` used to be a *third* simplification (browsers can't
+// play an HTML5 <video>/<audio> backwards, so it always previewed forward) —
+// no longer: whenever a reversed clip's proxy (editorManager.ts's
+// "Reverse live-preview proxies" section) is `ready`, this instead plays that
+// small pre-rendered file forward, which is what actually *looks* reversed.
+// `getVideoEl`/`getAudioEl` pick between the real asset and the clip's proxy
+// via `applyDesiredSource`; while a proxy isn't ready yet (or failed), the
+// clip still previews forward and `reverseProxyStatusMessage` surfaces why.
+//
 // While playing, this component owns the advancing playhead itself (driven
 // by requestAnimationFrame + wall-clock delta, not by the underlying video
 // elements' own clocks) and reports it upward via `onTimeUpdate` so
@@ -98,6 +107,8 @@ export default function PreviewPlayer({
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
   const [overlayRect, setOverlayRect] = useState<OverlayRect | null>(null)
+  const [reverseNotice, setReverseNotice] = useState<string | null>(null)
+  const reverseNoticeRef = useRef<string | null>(null)
   const poolRef = useRef<Pool>({
     video: new Map(),
     audio: new Map(),
@@ -148,6 +159,36 @@ export default function PreviewPlayer({
     return url
   }
 
+  /** True while `clip` should play its reversed proxy (played forward) instead of the real asset — see this file's header comment and editorTypes.ts's ReverseProxyState. */
+  function usesReverseProxy(clip: Clip): boolean {
+    return clip.reverse && clip.reverseProxy?.status === 'ready'
+  }
+
+  /**
+   * Points `el.src` at whichever source `clip` should currently be playing —
+   * the real asset, or (once ready) its reversed proxy — re-fetching only
+   * when that choice actually changes (tracked via a dataset key on the
+   * element itself), not on every draw()/syncAudioAndPlayback() call. A
+   * proxy re-render reuses the same clip id but a fresh relPath (see
+   * editorManager.ts), so the key naturally changes and the element picks up
+   * the new file instead of a stale cached one.
+   */
+  function applyDesiredSource(el: HTMLMediaElement, clip: Clip) {
+    const proxy = usesReverseProxy(clip)
+    const key = proxy ? `proxy:${clip.reverseProxy!.relPath}` : `asset:${clip.assetId}`
+    if (el.dataset.srcKey === key) return
+    el.dataset.srcKey = key
+    if (proxy) {
+      window.api.getReverseProxyUrl(projectId, clip.id).then((url) => {
+        if (url && el.dataset.srcKey === key) el.src = url
+      })
+    } else if (clip.assetId) {
+      getMediaUrl(clip.assetId).then((url) => {
+        if (el.dataset.srcKey === key) el.src = url
+      })
+    }
+  }
+
   function getVideoEl(clip: Clip): HTMLVideoElement {
     const pool = poolRef.current
     let el = pool.video.get(clip.id)
@@ -156,8 +197,8 @@ export default function PreviewPlayer({
       el.crossOrigin = 'anonymous'
       el.playsInline = true
       pool.video.set(clip.id, el)
-      if (clip.assetId) getMediaUrl(clip.assetId).then((url) => (el!.src = url))
     }
+    applyDesiredSource(el, clip)
     return el
   }
 
@@ -168,8 +209,8 @@ export default function PreviewPlayer({
       el = document.createElement('audio')
       el.crossOrigin = 'anonymous'
       pool.audio.set(clip.id, el)
-      if (clip.assetId) getMediaUrl(clip.assetId).then((url) => (el!.src = url))
     }
+    applyDesiredSource(el, clip)
     return el
   }
 
@@ -339,7 +380,12 @@ export default function PreviewPlayer({
         if (img.complete && img.naturalWidth > 0) drawClipVisual(ctx, clip, img, alpha)
       } else {
         const videoEl = getVideoEl(clip)
-        const desiredTime = clip.inPoint + localTime * clip.speed
+        // A reversed clip's proxy already has the trim/speed/reversal baked
+        // in (it's rendered to exactly this clip's on-timeline duration), so
+        // it just plays at 1x from its own start — only the *real* asset
+        // needs the inPoint offset and speed applied here.
+        const proxy = usesReverseProxy(clip)
+        const desiredTime = proxy ? localTime : clip.inPoint + localTime * clip.speed
         if (Number.isFinite(desiredTime) && videoEl.readyState >= 1 && Math.abs(videoEl.currentTime - desiredTime) > 0.2) {
           try {
             videoEl.currentTime = desiredTime
@@ -347,10 +393,33 @@ export default function PreviewPlayer({
             // not seekable yet
           }
         }
-        videoEl.playbackRate = clip.speed
+        videoEl.playbackRate = proxy ? 1 : clip.speed
         if (videoEl.readyState >= 2) drawClipVisual(ctx, clip, videoEl, alpha)
       }
     }
+
+    const notice = reverseProxyStatusMessage(tl, time)
+    if (notice !== reverseNoticeRef.current) {
+      reverseNoticeRef.current = notice
+      setReverseNotice(notice)
+    }
+  }
+
+  /** A short status line to show over the canvas while the *active* clip at `time` is reversed but its live-preview proxy isn't ready yet — null once nothing active needs it. */
+  function reverseProxyStatusMessage(tl: Timeline, time: number): string | null {
+    const videoTracks = sortByOrder(tl.tracks.filter((t) => t.type === 'video' && !t.hidden))
+    const overlayTracks = sortByOrder(tl.tracks.filter((t) => t.type === 'overlay' && !t.hidden))
+    for (const track of [...videoTracks, ...overlayTracks]) {
+      const clip = activeClip(tl.clips, track.id, time)
+      if (!clip || clip.kind !== 'media' || !clip.reverse) continue
+      const status = clip.reverseProxy?.status
+      if (status === 'ready' || status === undefined) continue
+      if (status === 'error') {
+        return `⚠ Reversed preview failed to render (${clip.reverseProxy?.error ?? 'unknown error'}) — playing forward; export still reverses correctly.`
+      }
+      return '⏳ Generating reversed preview…'
+    }
+    return null
   }
 
   function syncAudioAndPlayback(time: number, playing: boolean) {
@@ -366,12 +435,15 @@ export default function PreviewPlayer({
       const localTime = time - clip.startTime
       const alpha = active ? fadeAlpha(localTime, clip.duration, clip.fadeInDuration, clip.fadeOutDuration) : 0
       const shouldSound = track.type === 'audio' ? active && !track.muted : active && !track.muted && clip.includeAudio
-      const desiredTime = clip.inPoint + Math.max(0, localTime) * clip.speed
+      // Same reasoning as draw()'s video branch above — a ready proxy is
+      // already trimmed/speed-adjusted/reversed, so it plays at 1x from 0.
+      const proxy = usesReverseProxy(clip)
+      const desiredTime = proxy ? Math.max(0, localTime) : clip.inPoint + Math.max(0, localTime) * clip.speed
 
       const applyTo = (el: HTMLMediaElement) => {
         el.volume = Math.max(0, Math.min(1, clip.volume * alpha))
         el.muted = !shouldSound
-        el.playbackRate = clip.speed
+        el.playbackRate = proxy ? 1 : clip.speed
         if (playing && active) {
           if (el.paused) {
             try {
@@ -554,6 +626,7 @@ export default function PreviewPlayer({
         width={timeline.projectSettings.width}
         height={timeline.projectSettings.height}
       />
+      {reverseNotice && <div className="preview-player__reverse-notice">{reverseNotice}</div>}
       {overlayRect && selectedClip && (
         <div
           className="preview-player__overlay-box"

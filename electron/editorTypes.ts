@@ -63,6 +63,29 @@ export interface Transition {
   duration: number
 }
 
+export type ReverseProxyStatus = 'pending' | 'ready' | 'error'
+
+/**
+ * Cache state for a media clip's reverse live-preview proxy (see
+ * reverseProxyManager.ts for how one is actually rendered and
+ * editorManager.ts for when) — browsers can't play an HTML5 `<video>`/
+ * `<audio>` backwards (no negative playbackRate), so a clip with `reverse`
+ * on gets its currently-trimmed range pre-rendered, reversed, into a small
+ * cached file, and the live preview plays *that* forward instead. `null`
+ * whenever `reverse` is off (or has never been turned on) — a clip only
+ * carries this while its reversed preview is pending/ready/failed.
+ */
+export interface ReverseProxyState {
+  status: ReverseProxyStatus
+  /** Project-relative path under `editor/proxies/` once `status` is 'ready' — null while pending, on error, or for an image clip (reverse is a no-op on a still frame, so no file is ever rendered). */
+  relPath: string | null
+  /** The trim/speed the current (or in-progress) file was rendered for — compared against the clip's live inPoint/outPoint/speed to detect a stale proxy after a trim/speed change. */
+  inPoint: number
+  outPoint: number
+  speed: number
+  error: string | null
+}
+
 export type ClipKind = 'media' | 'text'
 
 export interface TextStyle {
@@ -111,6 +134,8 @@ export interface Clip {
   reverse: boolean
   /** Flips the clip horizontally (mirror image). Media clips only. */
   mirror: boolean
+  /** Reverse live-preview proxy cache state — see ReverseProxyState. Null unless/until `reverse` has been turned on. */
+  reverseProxy: ReverseProxyState | null
 }
 
 export interface ProjectSettings {

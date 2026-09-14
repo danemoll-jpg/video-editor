@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto'
+import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { readJsonFile, writeJsonFile } from './fsUtils'
 import { requireProjectDir, touchProject } from './projectPaths'
 import type { ProjectManager } from './projectManager'
 import { probeMedia } from './mediaProbe'
 import { buildMediaUrl } from './mediaProtocol'
+import { renderReverseProxy } from './reverseProxyManager'
 import {
   DEFAULT_CHROMA_KEY,
   DEFAULT_PROJECT_SETTINGS,
@@ -26,6 +28,11 @@ import {
 //
 //   editor/
 //     timeline.json   Timeline — project canvas settings + tracks + clips
+//     proxies/        cached reverse live-preview proxies, one small .mp4
+//                      per clip currently rendered — see the "Reverse
+//                      live-preview proxies" section below and
+//                      reverseProxyManager.ts for how one is actually
+//                      rendered via FFmpeg.
 //
 // A `Track` is a lane (video, audio, or overlay/text) — `order` is a
 // contiguous 0..n-1 permutation *within its type* (a video track's order
@@ -86,7 +93,26 @@ function normalizeClip(clip: Clip): Clip {
     transitionOut: clip.transitionOut ?? { ...DEFAULT_TRANSITION, type: 'none' },
     reverse: clip.reverse ?? false,
     mirror: clip.mirror ?? false,
+    reverseProxy: clip.reverseProxy ?? null,
   }
+}
+
+/** True when two trim/speed numbers are close enough to count as "the same" — floats round-tripped through JSON/UI shouldn't cause a spurious stale-proxy regenerate. */
+function closeEnough(a: number, b: number): boolean {
+  return Math.abs(a - b) < 0.01
+}
+
+/** True when `clip` still actually wants the reverse-proxy render that was kicked off for `target` — i.e. nothing (reverse being turned off, a newer trim edit, a delete) superseded it while it was running. */
+function isPendingFor(clip: Clip | undefined, target: { inPoint: number; outPoint: number; speed: number }): clip is Clip {
+  return (
+    !!clip &&
+    clip.kind === 'media' &&
+    clip.reverse &&
+    clip.reverseProxy?.status === 'pending' &&
+    closeEnough(clip.reverseProxy.inPoint, target.inPoint) &&
+    closeEnough(clip.reverseProxy.outPoint, target.outPoint) &&
+    closeEnough(clip.reverseProxy.speed, target.speed)
+  )
 }
 
 function normalizeTimeline(timeline: Timeline): Timeline {
@@ -143,9 +169,24 @@ export type ClipUpdates = Partial<
 export class EditorManager {
   constructor(private readonly projectManager: ProjectManager) {}
 
+  // Notified whenever a reverse-proxy render finishes in the background
+  // (i.e. outside of any IPC call the renderer itself is awaiting) — see
+  // finishReverseProxy(). main.ts wires this to a webContents.send so the
+  // renderer knows to re-fetch the timeline and pick up the pending → ready/
+  // error transition.
+  private onChange: ((projectId: string) => void) | null = null
+  /** Clip ids with a reverse-proxy render currently running — guards against kicking off a second one for the same clip while one's already in flight. */
+  private readonly proxyRendersInFlight = new Set<string>()
+
+  setChangeListener(listener: (projectId: string) => void): void {
+    this.onChange = listener
+  }
+
   async getTimeline(projectId: string): Promise<Timeline> {
     const dir = await requireProjectDir(projectId)
-    return this.readTimeline(dir)
+    const timeline = await this.readTimeline(dir)
+    this.recoverOrphanedProxies(projectId, timeline)
+    return timeline
   }
 
   async updateProjectSettings(projectId: string, updates: Partial<ProjectSettings>): Promise<Timeline> {
@@ -201,11 +242,16 @@ export class EditorManager {
     const track = timeline.tracks.find((t) => t.id === trackId)
     if (!track) throw new Error('Track not found.')
 
+    const removedProxyPaths = timeline.clips
+      .filter((c) => c.trackId === trackId && c.reverseProxy?.relPath)
+      .map((c) => c.reverseProxy!.relPath as string)
+
     timeline.tracks = timeline.tracks.filter((t) => t.id !== trackId)
     timeline.clips = timeline.clips.filter((c) => c.trackId !== trackId)
     renumberTrackType(timeline.tracks, track.type)
 
     await this.writeTimeline(dir, timeline)
+    for (const relPath of removedProxyPaths) await this.deleteProxyFile(dir, relPath)
     return timeline
   }
 
@@ -258,6 +304,7 @@ export class EditorManager {
         text: defaultTextStyle(),
         reverse: false,
         mirror: false,
+        reverseProxy: null,
       }
     } else {
       if (!input.assetId) throw new Error('A media clip needs an assetId.')
@@ -315,6 +362,7 @@ export class EditorManager {
         text: null,
         reverse: false,
         mirror: false,
+        reverseProxy: null,
       }
     }
 
@@ -379,18 +427,33 @@ export class EditorManager {
     if (updates.reverse !== undefined && clip.kind === 'media') clip.reverse = updates.reverse
     if (updates.mirror !== undefined && clip.kind === 'media') clip.mirror = updates.mirror
 
+    // Whatever combination of the above just changed reverse itself and/or
+    // the trim/speed a reversed clip's proxy was rendered for — reconcile
+    // once, after every field is already applied to `clip`, so e.g. trimming
+    // an already-reversed clip in one call correctly regenerates rather than
+    // silently keeping a now-stale proxy.
+    const plan = this.planReverseProxyChange(clip)
+
     await this.writeTimeline(dir, timeline)
     await touchProject(dir)
+    // Awaited (unlike the fire-and-forget kickOffGenerate below) — deleting
+    // one small file is fast, and callers/tests checking "is the old proxy
+    // really gone" right after this resolves shouldn't have to race it.
+    if (plan.staleRelPath) await this.deleteProxyFile(dir, plan.staleRelPath)
+    if (plan.generate) this.kickOffGenerate(projectId, clip.id, plan.generate)
     return timeline
   }
 
   async deleteClip(projectId: string, clipId: string): Promise<Timeline> {
     const dir = await requireProjectDir(projectId)
     const timeline = await this.readTimeline(dir)
-    if (!timeline.clips.some((c) => c.id === clipId)) throw new Error('Clip not found.')
+    const clip = timeline.clips.find((c) => c.id === clipId)
+    if (!clip) throw new Error('Clip not found.')
+    const relPath = clip.reverseProxy?.relPath ?? null
     timeline.clips = timeline.clips.filter((c) => c.id !== clipId)
     await this.writeTimeline(dir, timeline)
     await touchProject(dir)
+    if (relPath) await this.deleteProxyFile(dir, relPath)
     return timeline
   }
 
@@ -407,10 +470,17 @@ export class EditorManager {
       // A duplicate lands right after the original with nothing following it
       // yet, so it can't inherit a transition into a clip that isn't there.
       transitionOut: { ...DEFAULT_TRANSITION, type: 'none' },
+      // Never share a cached proxy *file* between two clips — the original
+      // and the copy have independent lifetimes (deleting one must not break
+      // the other's preview), so a duplicate always gets its own, freshly
+      // generated if it needs one.
+      reverseProxy: null,
     }
+    const plan = this.planReverseProxyChange(copy)
     timeline.clips.push(copy)
     await this.writeTimeline(dir, timeline)
     await touchProject(dir)
+    if (plan.generate) this.kickOffGenerate(projectId, copy.id, plan.generate)
     return timeline
   }
 
@@ -475,12 +545,18 @@ export class EditorManager {
       text: null,
       reverse: clip.reverse,
       mirror: false,
+      // Independent clip, independent proxy (same reasoning as
+      // duplicateClip) — if the source clip is reversed, this new one starts
+      // out reversed too and needs its own freshly-rendered proxy.
+      reverseProxy: null,
     }
+    const plan = this.planReverseProxyChange(audioClip)
     timeline.clips.push(audioClip)
     clip.includeAudio = false
 
     await this.writeTimeline(dir, timeline)
     await touchProject(dir)
+    if (plan.generate) this.kickOffGenerate(projectId, audioClip.id, plan.generate)
     return timeline
   }
 
@@ -517,9 +593,20 @@ export class EditorManager {
     if (clip.kind === 'media') clip.inPoint = clip.inPoint + offset * clip.speed
     clip.fadeInDuration = 0
 
+    // Both halves now cover a different, narrower trim range than whatever
+    // proxy (if any) was rendered for the whole original clip — reconcile
+    // each independently rather than leaving either with a proxy that no
+    // longer matches its own trim.
+    const headPlan = this.planReverseProxyChange(head)
+    const tailPlan = this.planReverseProxyChange(clip)
+
     timeline.clips.push(head)
     await this.writeTimeline(dir, timeline)
     await touchProject(dir)
+    if (headPlan.staleRelPath) await this.deleteProxyFile(dir, headPlan.staleRelPath)
+    if (tailPlan.staleRelPath) await this.deleteProxyFile(dir, tailPlan.staleRelPath)
+    if (headPlan.generate) this.kickOffGenerate(projectId, head.id, headPlan.generate)
+    if (tailPlan.generate) this.kickOffGenerate(projectId, clip.id, tailPlan.generate)
     return timeline
   }
 
@@ -529,6 +616,180 @@ export class EditorManager {
   async getAssetMediaUrl(projectId: string, assetId: string): Promise<string> {
     const absPath = await this.projectManager.getAssetAbsolutePath(projectId, assetId)
     return buildMediaUrl(absPath)
+  }
+
+  // --- Reverse live-preview proxies -----------------------------------------
+  //
+  // A clip's `reverse` flips it in the *export* (real FFmpeg `reverse`/
+  // `areverse`), but the live preview can't play an HTML5 <video>/<audio>
+  // backwards — so PreviewPlayer.tsx instead plays a small pre-rendered
+  // "reversed" proxy file forward whenever one is ready. This section is
+  // what keeps each reversed clip's `reverseProxy` state (see
+  // ReverseProxyState in editorTypes.ts) in sync with its current trim, and
+  // what actually kicks off/cleans up the FFmpeg render (reverseProxyManager.ts
+  // does the rendering itself). Every mutation method above that can change a
+  // clip's `reverse`/inPoint/outPoint/speed, or remove a clip/track entirely,
+  // calls into this rather than duplicating the same reconcile-then-render-
+  // then-persist dance inline.
+
+  /**
+   * Decides what (if anything) needs to happen to `clip`'s reverseProxy given
+   * its *current* (already-updated) reverse/inPoint/outPoint/speed — and, if
+   * it decides a (re)generate is needed, immediately sets `clip.reverseProxy`
+   * to a 'pending' placeholder so the caller's very next `writeTimeline`
+   * persists that right away (the renderer sees "generating…" the moment its
+   * own update call resolves, not only once the later change-listener fires).
+   * Does not touch the filesystem or kick off any async work itself — the
+   * caller decides when (after its own writeTimeline) via the returned plan.
+   */
+  private planReverseProxyChange(clip: Clip): {
+    staleRelPath: string | null
+    generate: { inPoint: number; outPoint: number; speed: number } | null
+  } {
+    if (clip.kind !== 'media') return { staleRelPath: null, generate: null }
+
+    if (!clip.reverse) {
+      const staleRelPath = clip.reverseProxy?.relPath ?? null
+      clip.reverseProxy = null
+      return { staleRelPath, generate: null }
+    }
+
+    const current = clip.reverseProxy
+    const stillMatches =
+      current &&
+      current.status !== 'error' &&
+      closeEnough(current.inPoint, clip.inPoint) &&
+      closeEnough(current.outPoint, clip.outPoint) &&
+      closeEnough(current.speed, clip.speed)
+    if (stillMatches) return { staleRelPath: null, generate: null }
+
+    const staleRelPath = current?.relPath ?? null
+    const target = { inPoint: clip.inPoint, outPoint: clip.outPoint, speed: clip.speed }
+    clip.reverseProxy = { status: 'pending', relPath: null, ...target, error: null }
+    return { staleRelPath, generate: target }
+  }
+
+  private kickOffGenerate(projectId: string, clipId: string, target: { inPoint: number; outPoint: number; speed: number }): void {
+    if (this.proxyRendersInFlight.has(clipId)) return
+    this.proxyRendersInFlight.add(clipId)
+    this.generateReverseProxy(projectId, clipId, target)
+      .catch(() => {
+        // generateReverseProxy already persists an 'error' status on
+        // failure via finishReverseProxy — nothing further to do here, this
+        // catch just exists so a rejected promise from a fire-and-forget
+        // call never surfaces as an unhandled rejection.
+      })
+      .finally(() => this.proxyRendersInFlight.delete(clipId))
+  }
+
+  /** On every `getTimeline`, re-kicks any clip stuck 'pending' with nothing actually in flight for it — the only way that can happen is the app having restarted mid-render (the in-memory promise is gone, but the persisted 'pending' state survived), so this is what makes a reversed clip's preview self-heal after a restart instead of staying "generating…" forever. */
+  private recoverOrphanedProxies(projectId: string, timeline: Timeline): void {
+    for (const clip of timeline.clips) {
+      if (
+        clip.kind === 'media' &&
+        clip.reverse &&
+        clip.reverseProxy?.status === 'pending' &&
+        !this.proxyRendersInFlight.has(clip.id)
+      ) {
+        const { inPoint, outPoint, speed } = clip.reverseProxy
+        this.kickOffGenerate(projectId, clip.id, { inPoint, outPoint, speed })
+      }
+    }
+  }
+
+  /**
+   * Renders the actual proxy file for `clipId`'s `target` trim/speed and
+   * persists the result — always ending in either a 'ready' or 'error'
+   * `reverseProxy` (never leaving it stuck 'pending'). Runs fully detached
+   * from whatever IPC call triggered it (updateClip etc. have already
+   * returned by the time this finishes), so completion is reported via
+   * `onChange` instead of a return value.
+   */
+  private async generateReverseProxy(
+    projectId: string,
+    clipId: string,
+    target: { inPoint: number; outPoint: number; speed: number },
+  ): Promise<void> {
+    const dir = await requireProjectDir(projectId)
+
+    // Re-read fresh rather than trusting a snapshot from whenever this was
+    // kicked off — an edit (or several) may have landed while this was
+    // queued behind another in-flight render for the same clip.
+    const timeline = await this.readTimeline(dir)
+    const clip = timeline.clips.find((c) => c.id === clipId)
+    if (!isPendingFor(clip, target)) return // superseded already — whoever superseded it owns the work now
+
+    try {
+      const asset = (await this.projectManager.listAssets(projectId)).find((a) => a.id === clip.assetId)
+      if (!asset) throw new Error('Asset not found.')
+
+      if (asset.kind === 'image') {
+        // Reverse is a no-op on a still frame — nothing to render, just mark
+        // it "ready" (with no file) so the UI stops showing "generating…".
+        await this.finishReverseProxy(projectId, clipId, target, { status: 'ready', relPath: null, error: null })
+        return
+      }
+
+      const absPath = await this.projectManager.getAssetAbsolutePath(projectId, asset.id)
+      const info = await probeMedia(absPath)
+
+      const proxiesDir = path.join(dir, 'editor', 'proxies')
+      await fs.mkdir(proxiesDir, { recursive: true })
+      const fileName = `${clipId}-${randomUUID().slice(0, 8)}.mp4`
+      const outputPath = path.join(proxiesDir, fileName)
+
+      await renderReverseProxy(
+        { absPath, inPoint: target.inPoint, outPoint: target.outPoint, speed: target.speed, hasVideo: info.hasVideo, hasAudio: info.hasAudio },
+        outputPath,
+      )
+
+      const relPath = path.join('editor', 'proxies', fileName)
+      await this.finishReverseProxy(projectId, clipId, target, { status: 'ready', relPath, error: null })
+    } catch (err) {
+      await this.finishReverseProxy(projectId, clipId, target, {
+        status: 'error',
+        relPath: null,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  /** Persists a finished (ready/error) render — but only if it's still wanted: discards (deletes the file, leaves state untouched) if the clip was deleted, reverse got turned back off, or a newer edit already superseded this exact render while it was running. */
+  private async finishReverseProxy(
+    projectId: string,
+    clipId: string,
+    target: { inPoint: number; outPoint: number; speed: number },
+    result: { status: 'ready' | 'error'; relPath: string | null; error: string | null },
+  ): Promise<void> {
+    const dir = await requireProjectDir(projectId)
+    const timeline = await this.readTimeline(dir)
+    const clip = timeline.clips.find((c) => c.id === clipId)
+
+    if (!clip || !clip.reverse || !isPendingFor(clip, target)) {
+      if (result.relPath) await this.deleteProxyFile(dir, result.relPath)
+      return
+    }
+
+    clip.reverseProxy = { status: result.status, relPath: result.relPath, ...target, error: result.error }
+    await this.writeTimeline(dir, timeline)
+    this.onChange?.(projectId)
+  }
+
+  private async deleteProxyFile(dir: string, relPath: string): Promise<void> {
+    await fs.rm(path.join(dir, relPath), { force: true }).catch(() => {
+      // Best-effort cleanup — a proxy file that's already gone (or never
+      // existed, e.g. an image clip's null relPath never reaches here) isn't
+      // worth failing the caller's own operation over.
+    })
+  }
+
+  /** The `media://` URL for a clip's *current* reverse proxy, or null if it isn't ready (or doesn't have one) — PreviewPlayer.tsx calls this instead of getAssetMediaUrl whenever a clip's reverse is on. */
+  async getReverseProxyMediaUrl(projectId: string, clipId: string): Promise<string | null> {
+    const dir = await requireProjectDir(projectId)
+    const timeline = await this.readTimeline(dir)
+    const clip = timeline.clips.find((c) => c.id === clipId)
+    if (!clip?.reverseProxy || clip.reverseProxy.status !== 'ready' || !clip.reverseProxy.relPath) return null
+    return buildMediaUrl(path.join(dir, clip.reverseProxy.relPath))
   }
 
   private async readTimeline(dir: string): Promise<Timeline> {

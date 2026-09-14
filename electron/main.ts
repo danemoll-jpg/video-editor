@@ -37,6 +37,14 @@ const mediaLibraryManager = new MediaLibraryManager(
   sfxLibraryManager,
 )
 const editorManager = new EditorManager(projectManager)
+// Reverse-proxy renders finish outside of any IPC call the renderer is
+// awaiting (see editorManager.ts's "Reverse live-preview proxies" section) —
+// this is how the renderer learns a pending → ready/error transition
+// happened, so it knows to re-fetch the timeline (see preload.ts's
+// onTimelineUpdated / EditorView.tsx).
+editorManager.setChangeListener((projectId) => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('editor:timelineUpdated', projectId)
+})
 const videoExportManager = new VideoExportManager(projectManager, editorManager)
 const libraryRelocationManager = new LibraryRelocationManager()
 
@@ -366,6 +374,9 @@ ipcMain.handle('editor:clip:extractAudio', (_e, projectId: string, clipId: strin
 
 ipcMain.handle('editor:getAssetMediaUrl', (_e, projectId: string, assetId: string) =>
   editorManager.getAssetMediaUrl(projectId, assetId),
+)
+ipcMain.handle('editor:getReverseProxyUrl', (_e, projectId: string, clipId: string) =>
+  editorManager.getReverseProxyMediaUrl(projectId, clipId),
 )
 
 ipcMain.handle('editor:chooseExportDestination', async () => {

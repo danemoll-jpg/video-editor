@@ -96,6 +96,15 @@ export default function ClipInspector({ clip, playhead, onUpdate, onDelete, onSp
               Mirror / flip horizontal
             </label>
           </div>
+          {clip.reverse && (
+            <p className="muted clip-inspector__hint">
+              {clip.reverseProxy?.status === 'ready'
+                ? '✅ Reversed preview ready — the live preview now plays this clip backwards.'
+                : clip.reverseProxy?.status === 'error'
+                  ? `⚠ Reversed preview failed to render (${clip.reverseProxy.error ?? 'unknown error'}) — export still reverses correctly.`
+                  : '⏳ Generating a reversed preview proxy… the live preview plays forward until this finishes.'}
+            </p>
+          )}
         </>
       )}
 

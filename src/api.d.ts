@@ -33,6 +33,8 @@ import type {
   ChromaKey,
   Crop,
   ProjectSettings,
+  ReverseProxyState,
+  ReverseProxyStatus,
   Timeline,
   Track,
   TrackType,
@@ -79,6 +81,8 @@ export type {
   ChromaKey,
   Crop,
   ProjectSettings,
+  ReverseProxyState,
+  ReverseProxyStatus,
   Timeline,
   Track,
   TrackType,
@@ -242,6 +246,8 @@ declare global {
       extractClipAudio(projectId: string, clipId: string): Promise<Timeline>
 
       getAssetMediaUrl(projectId: string, assetId: string): Promise<string>
+      getReverseProxyUrl(projectId: string, clipId: string): Promise<string | null>
+      onTimelineUpdated(callback: (projectId: string) => void): () => void
 
       chooseExportDestination(): Promise<string | null>
       exportTimeline(projectId: string, outputName: string, destinationDir?: string): Promise<{ outputPath: string }>

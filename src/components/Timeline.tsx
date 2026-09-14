@@ -283,8 +283,17 @@ export default function Timeline({
                             />
                             <span className="timeline__clip-label">{assetLabel(clip)}</span>
                             {clip.kind === 'media' && clip.reverse && (
-                              <span className="timeline__clip-badge" title="Reverse is on — exports reversed; live preview still plays forward (browsers can't play video backwards)">
-                                ⏪
+                              <span
+                                className="timeline__clip-badge"
+                                title={
+                                  clip.reverseProxy?.status === 'ready'
+                                    ? "Reverse is on — the live preview plays a cached reversed proxy (browsers can't play video backwards directly, so this is pre-rendered once)"
+                                    : clip.reverseProxy?.status === 'error'
+                                      ? `Reverse is on — the reversed preview proxy failed to render (${clip.reverseProxy.error ?? 'unknown error'}); export still reverses correctly`
+                                      : 'Reverse is on — generating a reversed preview proxy… live preview plays forward until this finishes'
+                                }
+                              >
+                                {clip.reverseProxy?.status === 'ready' ? '⏪' : clip.reverseProxy?.status === 'error' ? '⏪⚠' : '⏪⏳'}
                               </span>
                             )}
                             {clip.kind === 'media' && clip.mirror && (

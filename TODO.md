@@ -1097,6 +1097,98 @@ Reporting each of the three separately, as asked:
     these** — same pattern as every prior round. Phase 6 stays the current
     objective.
 
+**Phase 6 continued — real reverse live-preview proxy (2026-09-13), built.**
+The one item decided but not yet built as of the previous round — see this
+section's "New (2026-09-13)" entry a few paragraphs below — is now built.
+When a media clip's `reverse` is turned on, `EditorManager` (new "Reverse
+live-preview proxies" section in `electron/editorManager.ts`) kicks off a
+background FFmpeg render of just that clip's *currently-trimmed* range,
+reversed, into a small cached proxy file at `editor/proxies/<clipId>-<id>.mp4`
+inside the project — the actual FFmpeg invocation lives in a new,
+single-purpose `electron/reverseProxyManager.ts` (same small-file pattern as
+`audioExtractor.ts`): input-side `-ss`/`-to` trims to just the clip's range
+before FFmpeg decodes anything, then `reverse`/`areverse` plus the same
+`atempo` chain the export uses for speed, scaled down to a 960px-wide
+preview-quality encode (the export remains the authoritative, full-quality
+renderer regardless of whether a preview proxy exists or matches — this is
+purely a preview aid). A new `Clip.reverseProxy` field (`ReverseProxyState`
+in `editorTypes.ts`) tracks `pending`/`ready`/`error` plus the exact
+trim/speed it was rendered for, so a later trim change is detected as stale
+and regenerates automatically — the stale file is deleted, not left behind.
+`PreviewPlayer.tsx` plays that proxy (forward — which is what makes it look
+reversed) instead of the real asset whenever one is `ready`, with a "⏳
+Generating reversed preview…"/"⚠ failed" banner over the canvas otherwise;
+the Clip Inspector and the timeline clip badge (previously just a plain
+"Reverse is on" badge, per the badge-only round before this one) now reflect
+proxy status specifically. Cleanup: turning `reverse` off, deleting the
+clip, or deleting the whole track all delete that clip's proxy file;
+duplicating a reversed clip or extracting its audio to a new track clip both
+get their own independently-rendered proxy rather than sharing the
+original's file, so one's deletion can never break the other's. Deleting the
+whole *project* needs no special-case code — the project folder (including
+`editor/proxies/`) is trashed as one unit, per `ProjectManager.deleteProject`'s
+existing behavior. An app restart mid-render is self-healing: a clip found
+stuck on `pending` with nothing actually in flight (the in-memory render
+promise is gone after a restart) is automatically re-kicked off the next
+time its project's timeline is read. Mirror needed no changes, as already
+decided — its live preview was already correct via a CSS flip.
+
+  **Verification status:**
+  - Confirmed working on this machine: `npm run typecheck` and
+    `npm run build` both succeed (renderer + main process); `npm start`
+    launches a real window without error, same as every prior phase.
+  - Confirmed working on this machine, via a scripted integration test run
+    through the real Electron runtime (same pattern as every prior phase) —
+    but this one additionally decodes and checks real pixel colors, not
+    just that FFmpeg's exit code was 0, the same rigor this file's
+    chroma-key diagnostic work called for and Phase 6's original
+    reverse/mirror *export* check used. Built a synthetic 4-second source
+    clip (0–2s solid red, 2–4s solid blue, plus a tone) specifically so a
+    genuinely-reversed render is pixel-distinguishable from a no-op. 29
+    assertions, all passing: turning Reverse on immediately reports
+    `pending` in that same `updateClip` call's own response (not just on a
+    later refetch); the proxy reaches `ready` with a real, non-empty file on
+    disk; decoding the proxy's first and last frames confirmed genuine
+    frame-order reversal (starts blue, ends red — the source's
+    tail-then-head, not its original head-then-tail); `getReverseProxyMediaUrl`
+    returns a real `media://` URL; trimming a reversed clip immediately
+    re-marked its proxy `pending`, the regenerated file got a fresh path,
+    the old (now-stale) file was actually deleted from disk, and the new one
+    was verified to still start on the correct (now-narrower) reversed
+    content; turning `reverse` back off cleared `reverseProxy` and deleted
+    the file; duplicating a reversed clip produced a second,
+    independently-rendered proxy file (not sharing the original's), and
+    deleting the duplicate removed only its own file, leaving the original's
+    untouched; a reversed image clip short-circuited to `ready` with no file
+    rendered at all (reverse is a no-op on a still frame). This test runs
+    fully isolated from Dan's real library — it points `libraryLocation.ts`'s
+    preference at a synthetic scratch folder before doing anything else, per
+    this file's own standing lesson from the library-relocation incident
+    about never letting a test touch real project data — and confirmed
+    afterward that only Dan's real "sfh" and "teafa" project folders exist
+    in the real library; nothing test-related leaked in.
+  - **Not yet confirmed: a live UI click-through (scripted or Dan's own) of
+    the actual Editor tab.** This round's verification exercised
+    `EditorManager`/`reverseProxyManager.ts` directly (and, via code
+    inspection, `PreviewPlayer.tsx`'s/`Timeline.tsx`'s/`ClipInspector.tsx`'s
+    proxy-aware logic), but — unlike most earlier Phase 6 items' first
+    verification pass — didn't drive the real rendered UI with a scripted
+    Playwright session this round. Same as every other still-open Phase 6
+    item: **Phase 6 stays the current objective** until Dan has clicked
+    through this himself (turn Reverse on for a real clip, watch the
+    "Generating…" state, confirm the live preview actually plays backwards
+    once it's ready) — see Current Objective below.
+  - **Still not done / not verified:** no automated test suite (same
+    caveat as every phase — the check above is a one-off script, not a
+    committed test). No progress percentage on the "Generating…" state
+    (FFmpeg's own `-progress` piping, used by the real MP4 export, wasn't
+    wired up here — a preview-proxy render is short enough on a trimmed
+    range that a bare spinner-style message was judged good enough; revisit
+    if a very long reversed clip makes that feel slow). The app-restart-mid-
+    render recovery path (see above) wasn't actually exercised by killing
+    the process mid-render in this pass — only reasoned through and covered
+    by code inspection, not a real repro.
+
 Current Objective (Focus Area)
 
 **Phase 3 is now considered complete.** The SFX/ElevenLabs typing bug
@@ -1310,28 +1402,17 @@ rest is broken. Reporting each separately, as usual:
     pixel-perfect mouse accuracy at whatever zoom level happens to be
     active. Revisit if this doesn't turn out to be what actually helps.
 
-**New (2026-09-13): real reverse live preview via a pre-rendered proxy.**
-DECIDED — build now, not backlog. Mirror needs no change; it already
-previews correctly live via a CSS flip, no FFmpeg involved. Reverse is the
-one that can't preview live in a browser (no reliable negative playback
-rate), so instead of only the badge:
-- When a clip's `reverse` is turned on, kick off a background FFmpeg job
-  that renders just that clip's *currently trimmed range*, reversed, into
-  a small proxy file cached under the project (e.g.
-  `editor/proxies/<clipId>-reversed.mp4`) — not the whole source file, to
-  keep render time reasonable.
-- The live preview player uses that proxy (played normally forward, which
-  now visually appears reversed) whenever `reverse` is on for that clip;
-  show a clear "generating preview…" state while the proxy renders, since
-  this won't be instant.
-- **Cache invalidation:** if the clip's trim changes after a proxy exists,
-  the proxy is stale and must regenerate before the next preview.
-- **Cleanup:** delete the proxy when reverse is turned off, when the clip
-  is deleted, and when the project is deleted — proxies shouldn't
-  accumulate indefinitely on disk.
-- Export can either reuse a valid cached proxy matching the current trim,
-  or just regenerate cleanly with the existing `reverse` FFmpeg filter —
-  either is fine; correctness matters more than reusing the cache.
+**Real reverse live preview via a pre-rendered proxy — RESOLVED (2026-09-13),
+built.** Was DECIDED (build now, not backlog) in this same round; now built
+— see "Phase 6 continued — real reverse live-preview proxy" in Completed
+Tasks above for the full record, including a pixel-level verification pass
+(29 assertions) confirming genuine frame-order reversal, stale-proxy
+regeneration on a trim change, and cleanup on reverse-off/delete/duplicate.
+Mirror needed no change, as already decided — its live preview already
+works correctly via a CSS flip. **Not yet confirmed: Dan's own click-through**
+(turn Reverse on, watch it generate, confirm the preview plays backwards
+once ready) — add this to the list of things worth trying during his next
+Editor-tab pass, alongside everything else still open in Phase 6.
 
 Background & Key Decisions
 

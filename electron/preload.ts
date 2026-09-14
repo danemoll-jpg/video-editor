@@ -211,6 +211,13 @@ const api = {
 
   getAssetMediaUrl: (projectId: string, assetId: string): Promise<string> =>
     ipcRenderer.invoke('editor:getAssetMediaUrl', projectId, assetId),
+  getReverseProxyUrl: (projectId: string, clipId: string): Promise<string | null> =>
+    ipcRenderer.invoke('editor:getReverseProxyUrl', projectId, clipId),
+  onTimelineUpdated: (callback: (projectId: string) => void): (() => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, projectId: string) => callback(projectId)
+    ipcRenderer.on('editor:timelineUpdated', listener)
+    return () => ipcRenderer.removeListener('editor:timelineUpdated', listener)
+  },
 
   chooseExportDestination: (): Promise<string | null> => ipcRenderer.invoke('editor:chooseExportDestination'),
   exportTimeline: (projectId: string, outputName: string, destinationDir?: string): Promise<{ outputPath: string }> =>

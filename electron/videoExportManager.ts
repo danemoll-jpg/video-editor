@@ -77,7 +77,8 @@ function escapeDrawtext(text: string): string {
   return text.replace(/'/g, '’').replace(/\r\n|\r|\n/g, ' ')
 }
 
-function atempoChain(speed: number): string {
+/** Exported for reverseProxyManager.ts's preview proxy, which needs the exact same speed-adjustment chain. */
+export function atempoChain(speed: number): string {
   // `atempo` only accepts 0.5–2.0; chain multiple stages for anything outside that.
   const stages: number[] = []
   let remaining = speed
