@@ -1295,24 +1295,75 @@ results, reported per item:**
     turned off — still the same washed-out result. This is the original
     bug on its own, confirmed independent of reverse; the two-separate-
     things framing above was worth checking but (a) is ruled out.
-  - **New concrete lead, not yet tested (2026-09-14): filter ORDER, not
-    the alpha/format chain.** Comparing this clip's filter_complex
-    (reverse on vs. off, both washed-out) against how it's built: chroma
-    key is applied **after** scaling — `crop=688:435:0:29,scale=1601:1080,
-    chromakey=...` — a >2x upscale of a real (compressed, noisy) source
-    clip happens *before* the key. Upscale interpolation can shift green
-    pixels slightly off the exact keyed color (`#31a05b`); with
-    `similarity=0.2` fairly tight, those now-slightly-off pixels stop
-    fully matching, while `blend=0.1` still partially softens them —
-    producing a hazy, partial removal across a wide area rather than a
-    clean cut, which matches "washed out" well. **Standard fix worth
-    testing directly: apply `chromakey` immediately after `crop`, before
-    `scale`**, so keying happens on exact, unscaled source pixel colors,
-    then scale the already-keyed (alpha-carrying) result. Test against
-    Dan's actual repro case (or an equivalent real, noisy/compressed
-    synthetic clip — not a clean synthetic one, since that's what let this
-    slip through twice already) with real pixel-level verification before
-    and after reordering, not just "the filter graph compiles."
+  - **Filter-ORDER lead — TESTED (2026-09-14), NOT confirmed, NOT applied.**
+    The theory: chroma key is applied **after** scaling —
+    `crop=688:435:0:29,scale=1601:1080,chromakey=...` — so a >2x upscale of
+    real (compressed, noisy) footage happens before the key; upscale
+    interpolation could shift green pixels slightly off `#31a05b`, and with
+    `similarity=0.2`/`blend=0.1` that could produce a hazy, wide-area
+    partial removal instead of a clean cut. Tested directly, per Dan's
+    request, with real pixel-level verification (not just "the filter graph
+    compiles") — not applied to `videoExportManager.ts`, since it did not
+    hold up:
+    - Built two real, compressed (libx264, CRF 18) synthetic clips through
+      the bundled FFmpeg — one a flat green field with per-pixel noise, one
+      with a realistic uneven-lighting vignette plus a real non-green
+      foreground subject (closer to an actual green screen's lighting
+      falloff, since a flat noisy field turned out to give upscale
+      interpolation nothing to blend across) — then ran each through both
+      the current order (`crop, scale, chromakey`) and the proposed order
+      (`crop, chromakey, scale`) using the exact real color/similarity/blend
+      values from Dan's log (`0x31a05b`/`0.2`/`0.1`).
+    - Measured three ways: mean brightness and non-black-pixel % of the
+      result composited over black (matching the real export's compositing
+      model), plus a more sensitive direct read of the per-clip chain's raw
+      **alpha channel** before compositing (a "hazy, partially keyed" pixel
+      shows as a mid-range alpha value even where compositing over black
+      would visually hide it). All three: **no measurable improvement from
+      reordering** — differences were within noise (a fraction of a percent)
+      and one measure (partial-alpha area) was marginally *worse* with the
+      reorder, not better.
+    - **Why the theory likely doesn't hold, worked out from the test:**
+      bilinear/linear scaling of a smooth spatial gradient — which is what
+      real, gradual green-screen lighting variance actually looks like —
+      reproduces that gradient almost exactly; there's very little for
+      "interpolation shifts the color" to act on except at sharp,
+      high-contrast edges, and even there the effect is confined to a
+      handful of edge pixels, not a wide area. That's consistent with the
+      measured result but doesn't match Dan's reported symptom (washed-out
+      across a broad area), which is the mismatch that makes this lead a
+      dead end rather than a confirmed fix.
+    - **A second, real reason not to apply this reorder even though it's
+      "more correct on paper":** converting to straight (non-premultiplied)
+      RGBA and then scaling *after* a partial chroma key — RGB channels are
+      black in fully-transparent regions — is a known way to introduce dark
+      edge fringing at partially-transparent boundaries that the current
+      (scale-then-key) order doesn't have. Reordering without a demonstrated
+      benefit would be trading an unconfirmed fix for a real new artifact
+      risk. **Verdict: not applied — reported, not forced to look
+      resolved, per the explicit ask.**
+    - **Side-check while here (2026-09-14):** since "washed out" is also the
+      textbook symptom of a limited/full color-RANGE mismatch (a completely
+      different, simpler cause, unrelated to chroma key or scale order at
+      all), did one isolated test: pushed a known solid color through the
+      exact same `format=rgba → pad → format=yuva420p → format=yuv420p`
+      chain the real export uses (chromakey removed, to isolate this from
+      the filter-order question) and confirmed it round-trips the color
+      correctly (within ±3, on a synthetic uncompressed source) — no
+      evidence of a range bug in the app's own conversion chain. **Not
+      conclusive** — a real captured/encoded source file carrying explicit
+      range metadata could still behave differently on decode than a
+      synthetic `lavfi color=` source does; this was a quick sanity check,
+      not a full test of that hypothesis.
+    - **No code changed this round.** `videoExportManager.ts`'s filter order
+      is unchanged from the previous round's hardening fix (`overlay=
+      format=auto` + re-asserted `format=yuva420p`).
+    - **What's actually needed next:** two rounds of synthetic recreation
+      (this one and the original battery of tests) have both failed to
+      reproduce Dan's exact symptom. The remaining productive path is
+      probably testing against Dan's *actual source file* (not just the
+      diagnostics log/screenshots) run through the real export pipeline
+      directly, rather than a third round of synthetic guessing.
   - Full log excerpts (both reverse-on and reverse-off versions, real
     filter_complex, FFprobe details, full FFmpeg args) available — see this
     round's chat history / Dan's two uploaded `export-diagnostics.log`
@@ -1549,6 +1600,17 @@ Technical Notes / Blockers
   continued — Dan's first-pass findings, addressed" in Completed Tasks) —
   still waiting on Dan's real reproduction to actually produce a log to act
   on; this note's "next step" is now literally the next step, not a plan.
+  **UPDATE (2026-09-14): the log arrived and ruled out `reverse` as the
+  cause (confirmed independent of it); the filter-order (chromakey-before-
+  scale) lead built from that log was tested with real pixel-level
+  verification and did NOT hold up — see Current Objective's Item 3 above
+  for the full test writeup, including a quick side-check that ruled out a
+  color-range mismatch too.** Two rounds of synthetic recreation have now
+  both failed to reproduce Dan's exact symptom. **Next step has changed:**
+  stop trying to reconstruct it synthetically a third time — get Dan's
+  actual source clip (or a short trimmed copy of it) and run it through the
+  real export pipeline directly, since the diagnostics log alone wasn't
+  enough to pin this down without the real footage's actual pixel data.
 - **NEW, urgent (2026-09-13): library relocation (item 5) has a real bug
   that left Dan's real project list broken in the UI, though his files are
   confirmed physically safe.** See Current Objective above for the full

@@ -215,7 +215,23 @@ project folder is trashed as one unit). Verified with a pixel-level scripted
 test (decoding real frames, not just checking FFmpeg's exit code) confirming
 genuine frame-order reversal — see TODO.md's Completed Tasks for the full
 record. Mirror needed no equivalent work; its live preview (a CSS flip)
-already works correctly. See TODO.md's Current Objective and Completed
-Tasks for the full per-item record, including the one item (chroma key)
-still not confirmed fixed and Dan's own click-through of the reverse
-preview, which is still outstanding.
+already works correctly. **Chroma-key-on-export (2026-09-14 round):** Dan's
+real diagnostic log ruled out `reverse` as a cause (re-tested with reverse
+off, same washed-out result — it's the original bug on its own). The
+filter-order lead it suggested (chroma key applied after scaling, so
+upscale interpolation could shift keyed pixels off-color) was tested with
+real pixel-level verification — decoding actual output pixels/alpha values
+from real, compressed, realistically-lit synthetic footage, not just
+compiling the filter graph — and did **not** hold up: reordering
+(`crop, chromakey, scale` instead of `crop, scale, chromakey`) produced no
+measurable improvement across three separate measurements, and it would
+also introduce a real, separate edge-fringing risk (scaling straight RGBA
+after a partial key can darken semi-transparent edges) with nothing to show
+for the trade. **Not applied** — `videoExportManager.ts`'s filter order is
+unchanged. See TODO.md's Current Objective (Item 3) for the full test
+methodology and results, and Technical Notes for what's actually needed
+next (Dan's real source clip, not another synthetic reconstruction — two
+rounds of those have now failed to reproduce his exact symptom). See
+TODO.md's Current Objective and Completed Tasks for the full per-item
+record, including Dan's own click-through of the reverse preview, which is
+still outstanding.
