@@ -1228,6 +1228,124 @@ two fixes to the scene/shot outline generator, found via Dan's real use.**
    merged with this new flow — flagging that as a real open question for
    later, not resolving it now to avoid scope creep on this round.
 
+  **BUILT (2026-09-14), both items — not yet confirmed by Dan's own hands,
+  per this project's normal pattern.** Reporting each separately, as asked:
+
+  1. **Verbatim script-detail preservation — built.** `aiAssistantManager.ts`'s
+     `SCENE_OUTLINE_SYSTEM_PROMPT` gained an explicit "IMPORTANT — preserve
+     structured script detail verbatim" section: it names the four detail
+     categories to copy through unchanged (timestamps/time ranges; quoted or
+     music-marked lyric lines; explicit shot/scene codes; clearly-marked
+     notes like "COMP NOTE:"/"Motion:"), includes Dan's exact example
+     verbatim as the illustration, and explicitly says a generic paraphrase
+     is wrong if the source specifies that level of detail — fold it in
+     alongside the plain-language summary, don't replace it. The constant is
+     now exported (like `parseGeneratedOutline` already was) purely so a
+     scripted check can assert its actual content without a paid API call.
+     No change to the JSON shape, `parseGeneratedOutline`, or
+     `applyGeneratedOutline` — this is a prompt-wording-only fix, downstream
+     handling already passes whatever text comes back through unmodified.
+  2. **"✨ Draft Grok Prompt" shot → Prompt Lab entry link — built, matches
+     the described scope exactly.** New `Shot.linkedGrokEntryId: string |
+     null` field (`productionManager.ts`, defaults to `null` for shots
+     created before this — via `normalizeShot`, same pattern as
+     `linkedSfxIds`), plumbed through `updateShot`'s updates type in
+     `main.ts`/`preload.ts`/`src/api.d.ts` exactly like the existing
+     `linkedAssetId`/`linkedSfxIds` fields. A new button on `ShotCard.tsx`
+     (in the shot's always-visible row, not gated behind expanding it) reads
+     "✨ Draft Grok Prompt" when unlinked or "✨ Open Grok Prompt" once
+     linked, disabled while the click is in flight. The actual create-or-
+     navigate logic lives in `SceneList.tsx` (which already owns `shots`
+     state and `window.api` access): unlinked → `createPromptEntry(...,
+     'grok', { promptText: seed })` where `seed` joins the shot's title and
+     description (so fix 1's preserved detail carries straight through, per
+     the original ask), then `updateShot(..., { linkedGrokEntryId })`;
+     either way, a new `onOpenGrokEntry(entryId)` callback bubbles up to
+     `ProjectView.tsx`, which sets a `promptLabFocusEntryId` and switches the
+     tab to Prompt Lab. Landing there: `PromptLab.tsx` passes the focus id
+     through to `PromptLabPanel.tsx` (Grok is already its default sub-tab,
+     so no extra tab-forcing logic was needed), which passes a new
+     `autoOpen` prop to `AiAssistantPanel.tsx` (starts the panel expanded
+     and focuses its composer textarea, instead of the normal
+     collapsed-by-default state) and a new `autoExpand` prop to the matching
+     `PromptEntryCard.tsx` (starts that one card expanded and scrolls it
+     into view). `promptLabFocusEntryId` is cleared whenever the user
+     navigates away from the Prompt Lab tab, so a later *manual* revisit
+     doesn't re-trigger the auto-expand/scroll from a stale earlier
+     navigation. No duplicate on a second click: the button checks
+     `shot.linkedGrokEntryId` first and only ever navigates in that case.
+     Deliberately untouched, per the original scope: the shot's older
+     standalone `promptText`/Copy-Prompt field and button.
+  - **Verification status (both items):** `npm run typecheck` and
+    `npm run build` both succeed. Confirmed working on this machine, via a
+    scripted check run through the real Electron runtime (same pattern as
+    every prior phase, exercising the real compiled code, not a
+    reimplementation of it): asserted `SCENE_OUTLINE_SYSTEM_PROMPT`'s actual
+    string content contains Dan's exact example verbatim plus each of the
+    four detail-category callouts and the word "verbatim" itself — no real
+    Anthropic call made, same "don't spend Dan's money to test something
+    that doesn't need it" discipline as every prior phase's system-prompt/
+    parsing verification, and consistent with this feature's own original
+    verification (which also couldn't exercise a real model call); confirmed
+    `parseGeneratedOutline` still passes a fixture containing that exact
+    verbatim text through completely unmodified (nothing downstream
+    re-summarizes it). Separately, created a real throwaway project/scene/
+    shot through the real `ProductionManager`/`PromptLabManager` and drove
+    the actual "draft" logic end-to-end: a fresh shot starts with
+    `linkedGrokEntryId: null`; drafting creates exactly one Grok entry
+    seeded with the shot's title and description (including the verbatim
+    detail) and links it; a second simulated click reuses the same id
+    without creating a second entry; and a hand-edited legacy shot file
+    missing `linkedGrokEntryId` entirely normalizes to `null` on read
+    instead of throwing. Also confirmed via a scripted Playwright pass
+    against the real, built Electron window (same technique as every prior
+    phase's UI verification — an isolated `--user-data-dir` *and*, this
+    round, a pre-seeded `libraryLocation.json` pointing at a throwaway temp
+    folder instead of the real Documents-based library, since
+    `--user-data-dir` alone isolates Electron's settings but not
+    `app.getPath('documents')` — exactly the kind of real-library collision
+    a prior round's dry runs were first caught hitting, avoided here by
+    construction instead of by luck): created a project via the real UI;
+    added a scene and a shot, set the shot's description to Dan's exact
+    example text via the real Save Details flow; confirmed the "✨ Draft
+    Grok Prompt" button is present before any entry is linked; clicked it
+    and confirmed the app navigated to Prompt Lab with the Grok sub-tab
+    active, the AI Assistant panel already expanded with its composer
+    textarea actually focused (`document.activeElement`, not just visible),
+    and the new entry's card already expanded and scrolled into view,
+    showing both the shot's title and the verbatim preserved detail
+    ("0:55-0:58", "COMP NOTE:", the quoted lyric) inside its prompt text;
+    went back to Scenes & Shots and confirmed the button now reads "✨ Open
+    Grok Prompt" (the create-new label is gone); clicked it again and
+    confirmed there is still exactly one Grok entry — no duplicate; deleted
+    the throwaway project and confirmed it no longer appears in the project
+    list. The throwaway userData/library temp folders were removed
+    afterward; confirmed via direct disk inspection that Dan's real
+    `OneDrive/Documents/Dan's Video Studio/Projects` folder still holds only
+    his real "teafa" project, untouched by any of this.
+  - **Not yet confirmed: an actual real-model generation run using item 1's
+    updated prompt** (same reasoning as this feature's original rollout —
+    that costs real money on Dan's key and needs his real Settings profile).
+    The prompt-content assertion above confirms the instruction is actually
+    being sent; whether Claude's real replies reliably honor it on Dan's
+    actual, messier scripts (not just the one worked example) still needs
+    Dan's own pass: regenerate an outline from a script using his real
+    shot-code/timestamp/lyric/comp-note shorthand and confirm the generated
+    shot descriptions keep that detail recognizable rather than summarizing
+    it away. For item 2, Dan's own click-through of the button in his real
+    project (not just this session's throwaway one) is still the
+    confirmation this project's pattern requires before considering either
+    item closed.
+  - **Still not done / not verified:** no automated test suite (same
+    caveat as every phase). The seeded Grok entry's starting prompt is the
+    shot's raw title+description text, not yet reshaped into
+    video-generation-prompt phrasing (camera/motion/style language) — the
+    AI Assistant is there to help with exactly that once the entry is open,
+    per the original scope, so this isn't a gap, just worth noting it's a
+    starting point, not a finished prompt. No UI surfaces the reverse
+    direction (jumping from a Grok Prompt Lab entry back to the shot that
+    drafted it) — not asked for.
+
 **URGENT, PRIORITY (2026-09-14): real data loss on a real project — this
 is next, now that the chroma-key preview-accuracy work below is done.**
 Dan lost both an AI Assistant conversation (a genuinely good idea, per

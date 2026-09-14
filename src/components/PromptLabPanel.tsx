@@ -16,6 +16,12 @@ interface Props {
   projectId: string
   kind: PromptLabKind
   assets: Asset[]
+  /**
+   * The entry a "✨ Draft Grok Prompt" shot navigation (2026-09-14) landed
+   * on, if any — expands the AI Assistant and scrolls/expands that entry's
+   * card. `PromptLab` only ever passes this for `kind === 'grok'`.
+   */
+  focusEntryId?: string | null
 }
 
 const EMPTY_FORM = { promptText: '', lyrics: '', settings: '', notes: '', tagsText: '', linkedAssetId: '' }
@@ -29,7 +35,7 @@ const EMPTY_FORM = { promptText: '', lyrics: '', settings: '', notes: '', tagsTe
  * but with a source-conditional set of extra fields instead of a fixed
  * `kind`.
  */
-export default function PromptLabPanel({ projectId, kind, assets }: Props) {
+export default function PromptLabPanel({ projectId, kind, assets, focusEntryId }: Props) {
   const [entries, setEntries] = useState<PromptEntry[]>([])
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [loading, setLoading] = useState(true)
@@ -168,6 +174,7 @@ export default function PromptLabPanel({ projectId, kind, assets }: Props) {
         projectId={projectId}
         context={kind}
         label={`${PROMPT_LAB_LABELS[kind]} Assistant`}
+        autoOpen={!!focusEntryId}
         onInsert={(text) => {
           setForm((f) => ({ ...f, promptText: text }))
           setShowForm(true)
@@ -320,6 +327,7 @@ export default function PromptLabPanel({ projectId, kind, assets }: Props) {
               parentEntry={entry.parentId ? entries.find((e) => e.id === entry.parentId) : undefined}
               compareSelected={compareIds.includes(entry.id)}
               compareDisabled={compareIds.length >= 2}
+              autoExpand={entry.id === focusEntryId}
               onToggleCompare={() => toggleCompare(entry.id)}
               onUpdate={(updates) => handleUpdateEntry(entry.id, updates)}
               onDelete={() => handleDeleteEntry(entry.id)}

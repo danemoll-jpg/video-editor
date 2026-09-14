@@ -7,6 +7,13 @@ import SfxPanel from './SfxPanel'
 interface Props {
   projectId: string
   assets: Asset[]
+  /**
+   * A Grok Prompt Lab entry id to land on and expand, set by
+   * `ProjectView` when a "✨ Draft Grok Prompt" shot navigation
+   * (2026-09-14) switches to this tab. Forces the Grok sub-tab (already the
+   * default) and is passed through to `PromptLabPanel`.
+   */
+  focusGrokEntryId?: string | null
 }
 
 type SubTab = PromptLabKind | 'sfx'
@@ -23,7 +30,9 @@ const SUB_TABS: { key: SubTab; label: string }[] = [
  * SFX library and ElevenLabs prompt-lab kind — see sfxLibraryManager.ts's
  * header comment).
  */
-export default function PromptLab({ projectId, assets }: Props) {
+export default function PromptLab({ projectId, assets, focusGrokEntryId }: Props) {
+  // Grok is already the default sub-tab, so a focusGrokEntryId target needs
+  // no extra logic here beyond being passed through to PromptLabPanel below.
   const [subTab, setSubTab] = useState<SubTab>('grok')
 
   return (
@@ -43,7 +52,13 @@ export default function PromptLab({ projectId, assets }: Props) {
       {subTab === 'sfx' ? (
         <SfxPanel projectId={projectId} assets={assets} />
       ) : (
-        <PromptLabPanel key={subTab} projectId={projectId} kind={subTab} assets={assets} />
+        <PromptLabPanel
+          key={subTab}
+          projectId={projectId}
+          kind={subTab}
+          assets={assets}
+          focusEntryId={subTab === 'grok' ? focusGrokEntryId : null}
+        />
       )}
     </div>
   )

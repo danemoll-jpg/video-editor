@@ -8,6 +8,16 @@ interface Props {
   label: string
   /** Called with an assistant reply's text when its "Insert" button is clicked. */
   onInsert: (text: string) => void
+  /**
+   * Starts the panel expanded and focuses the composer, instead of the
+   * normal collapsed-by-default state — used by the "✨ Draft Grok Prompt"
+   * shot flow (2026-09-14) to land the user ready to iterate rather than
+   * needing an extra click to expand. Only read as this component's
+   * *initial* state (see the mount-time `useState`/`useEffect` below); it
+   * doesn't force the panel open on every render, so the user can still
+   * collapse it normally afterward.
+   */
+  autoOpen?: boolean
 }
 
 /**
@@ -31,8 +41,8 @@ interface Props {
  * state — silently destroyed the instant this panel unmounts, e.g. by
  * switching tabs — was the real cause behind "lost a whole conversation."
  */
-export default function AiAssistantPanel({ projectId, context, label, onInsert }: Props) {
-  const [expanded, setExpanded] = useState(false)
+export default function AiAssistantPanel({ projectId, context, label, onInsert, autoOpen }: Props) {
+  const [expanded, setExpanded] = useState(!!autoOpen)
   const [loaded, setLoaded] = useState(false)
   const [messages, setMessages] = useState<AiMessage[]>([])
   const [loading, setLoading] = useState(false)
@@ -40,15 +50,25 @@ export default function AiAssistantPanel({ projectId, context, label, onInsert }
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     // Switching project or context invalidates whatever was loaded/expanded.
-    setExpanded(false)
+    setExpanded(!!autoOpen)
     setLoaded(false)
     setMessages([])
     setDraft('')
     setError(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, context])
+
+  // Focus the composer once, on mount, when this panel was asked to open
+  // pre-expanded — by the time this effect runs the textarea already exists,
+  // since `expanded` starts true from the initial state above.
+  useEffect(() => {
+    if (autoOpen) composerRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (!expanded || loaded) return
@@ -135,6 +155,7 @@ export default function AiAssistantPanel({ projectId, context, label, onInsert }
 
           <div className="ai-assistant__composer">
             <textarea
+              ref={composerRef}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {

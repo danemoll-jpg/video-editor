@@ -9,6 +9,7 @@ export interface ShotUpdates {
   status?: ShotStatus
   linkedAssetId?: string | null
   linkedSfxIds?: string[]
+  linkedGrokEntryId?: string | null
 }
 
 interface Props {
@@ -20,9 +21,31 @@ interface Props {
   onUpdate: (updates: ShotUpdates) => void
   onDelete: () => void
   onMove: (direction: 'up' | 'down') => void
+  /**
+   * "✨ Draft Grok Prompt" (2026-09-14): if the shot has no linked Grok
+   * Prompt Lab entry yet, create one (seeded from this shot's title/
+   * description), link it, and navigate to Prompt Lab → Grok with it open;
+   * if already linked, just navigate there — no duplicate. The actual
+   * create-and-link work happens up in `SceneList` (which owns `shots` and
+   * has `window.api`), not here — this component only triggers it and
+   * shows a busy state while it's in flight.
+   */
+  onDraftGrokPrompt: () => void
+  draftingGrokPrompt: boolean
 }
 
-export default function ShotCard({ shot, assets, sfxEntries, isFirst, isLast, onUpdate, onDelete, onMove }: Props) {
+export default function ShotCard({
+  shot,
+  assets,
+  sfxEntries,
+  isFirst,
+  isLast,
+  onUpdate,
+  onDelete,
+  onMove,
+  onDraftGrokPrompt,
+  draftingGrokPrompt,
+}: Props) {
   const [expanded, setExpanded] = useState(false)
   const [title, setTitle] = useState(shot.title)
   const [description, setDescription] = useState(shot.description)
@@ -76,6 +99,18 @@ export default function ShotCard({ shot, assets, sfxEntries, isFirst, isLast, on
             {SHOT_STATUS_LABELS[nextStatus]} →
           </button>
         )}
+        <button
+          className="btn"
+          disabled={draftingGrokPrompt}
+          title={
+            shot.linkedGrokEntryId
+              ? "Open this shot's linked Grok Prompt Lab entry"
+              : 'Create a Grok Prompt Lab entry for this shot, seeded from its title/description, and open it with AI help'
+          }
+          onClick={onDraftGrokPrompt}
+        >
+          {draftingGrokPrompt ? 'Opening…' : shot.linkedGrokEntryId ? '✨ Open Grok Prompt' : '✨ Draft Grok Prompt'}
+        </button>
         <div className="spacer" />
         <button className="btn" disabled={isFirst} onClick={() => onMove('up')} title="Move up">
           ↑

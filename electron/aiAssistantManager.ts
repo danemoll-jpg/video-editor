@@ -84,8 +84,29 @@ to paste or search with, not a description of it.`,
  * file, since it isn't a conversation. The prompt asks for strict JSON so
  * `parseGeneratedOutline` below can turn it directly into
  * `GeneratedSceneOutline[]` for `ProductionManager.applyGeneratedOutline`.
+ *
+ * 2026-09-14, updated per Dan's real use: his script format is already
+ * shot-structured and detail-rich — e.g.
+ * `**S17 | 0:55-0:58 | FULL** \u{1F3B5} "Making distance disappear." Wide of
+ * the shared couch. Abi is very slightly translucent... *Motion: static,
+ * gentle.* **COMP NOTE:** Abi layer at 88% opacity, feathered edge.` — and
+ * the original prompt above (still describing the general task) said nothing
+ * about that detail, so the model paraphrased it away into a generic
+ * description instead of carrying it forward. The block below is additive:
+ * it explicitly calls out the categories of detail Dan's format actually
+ * contains (timestamps, quoted/music-marked lyric lines, shot/scene codes,
+ * labeled notes) and instructs preserving them verbatim inside the
+ * generated shot's description, rather than summarizing over them — a shot
+ * built from that example should keep "0:55-0:58", the exact quoted lyric,
+ * "COMP NOTE: Abi layer at 88% opacity, feathered edge," and "Motion:
+ * static, gentle" recognizably intact in its description text, not
+ * paraphrased into something like "a couple sits on a couch."
  */
-const SCENE_OUTLINE_SYSTEM_PROMPT = `You are helping a solo creator turn a finished script for a short-form video into a first-pass production breakdown: scenes, and a shot breakdown within each scene.
+// Exported (like parseGeneratedOutline below) purely so a scripted
+// verification pass can assert its actual content — e.g. that Dan's real
+// example is present and the verbatim-preservation instructions are there —
+// without needing a real, paid Anthropic call just to check prompt text.
+export const SCENE_OUTLINE_SYSTEM_PROMPT = `You are helping a solo creator turn a finished script for a short-form video into a first-pass production breakdown: scenes, and a shot breakdown within each scene.
 
 Read the script text the user provides and respond with ONLY a JSON array — no prose, no markdown code fences, nothing before or after it — matching exactly this shape:
 
@@ -99,7 +120,21 @@ Read the script text the user provides and respond with ONLY a JSON array — no
   }
 ]
 
-Break the script into a sensible number of scenes, in script order, and break each scene into a sensible first-pass shot list (typically a few shots per scene, however many the scene's content actually calls for — a short scene might only need one). Titles and descriptions only: do not write video-generation prompts, camera-move jargon, or any field beyond title/description — that level of detail belongs to a separate, later step. Respond with the JSON array and nothing else.`
+Break the script into a sensible number of scenes, in script order, and break each scene into a sensible first-pass shot list (typically a few shots per scene, however many the scene's content actually calls for — a short scene might only need one). Titles and descriptions only: do not write video-generation prompts, camera-move jargon, or any field beyond title/description — that level of detail belongs to a separate, later step.
+
+IMPORTANT — preserve structured script detail verbatim, do not summarize it away. Some scripts are already written in a shot-structured shorthand with precise, load-bearing detail inline, for example:
+
+**S17 | 0:55-0:58 | FULL** \u{1F3B5} "Making distance disappear." Wide of the shared couch. Abi is very slightly translucent... *Motion: static, gentle.* **COMP NOTE:** Abi layer at 88% opacity, feathered edge.
+
+Whenever the script text contains any of the following, copy it into the relevant shot's "description" field exactly as written (verbatim, not reworded or paraphrased) rather than replacing it with a generic summary:
+- Timestamps or time ranges (e.g. "0:55-0:58")
+- Quoted or music-marked lyric lines (e.g. \u{1F3B5} "Making distance disappear.")
+- Explicit shot or scene codes (e.g. "S17", "FULL")
+- Clearly-marked notes, such as anything labeled "COMP NOTE:", "Motion:", or similar all-caps/colon-prefixed labels
+
+A generic paraphrase like "a couple sits on a couch" is wrong if the source text actually specifies the shot code, timing, quoted lyric, motion note, and comp note above — all of that detail must still be recognizable in the generated description, folded in alongside your own plain-language summary of the action, not dropped in favor of it. If a shot in the script has none of this structured detail, just describe it normally.
+
+Respond with the JSON array and nothing else.`
 
 /**
  * Turns a raw model response into validated GeneratedSceneOutline[], or

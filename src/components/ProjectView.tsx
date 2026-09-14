@@ -32,6 +32,20 @@ export default function ProjectView({ projectId, onBack }: Props) {
   const [importing, setImporting] = useState(false)
   const [extractingAudioId, setExtractingAudioId] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('assets')
+  // "✨ Draft Grok Prompt" (2026-09-14): the entry id a shot navigation should
+  // land Prompt Lab's Grok sub-tab on, expanded and ready. Cleared whenever
+  // the user leaves the Prompt Lab tab, so a later *manual* visit to Prompt
+  // Lab doesn't re-trigger an old navigation's auto-expand/auto-scroll.
+  const [promptLabFocusEntryId, setPromptLabFocusEntryId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (tab !== 'promptlab') setPromptLabFocusEntryId(null)
+  }, [tab])
+
+  function handleOpenGrokEntry(entryId: string) {
+    setPromptLabFocusEntryId(entryId)
+    setTab('promptlab')
+  }
 
   async function refresh() {
     setLoading(true)
@@ -243,13 +257,13 @@ export default function ProjectView({ projectId, onBack }: Props) {
 
       {tab === 'scenes' && (
         <div className="tab-panel">
-          <SceneList projectId={projectId} assets={assets} />
+          <SceneList projectId={projectId} assets={assets} onOpenGrokEntry={handleOpenGrokEntry} />
         </div>
       )}
 
       {tab === 'promptlab' && (
         <div className="tab-panel">
-          <PromptLab projectId={projectId} assets={assets} />
+          <PromptLab projectId={projectId} assets={assets} focusGrokEntryId={promptLabFocusEntryId} />
         </div>
       )}
 

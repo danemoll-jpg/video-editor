@@ -6,9 +6,11 @@ import type { ShotUpdates } from './ShotCard'
 interface Props {
   projectId: string
   assets: Asset[]
+  /** Called with a shot's linked (or newly created) Grok Prompt Lab entry id once ready to navigate there. */
+  onOpenGrokEntry: (entryId: string) => void
 }
 
-export default function SceneList({ projectId, assets }: Props) {
+export default function SceneList({ projectId, assets, onOpenGrokEntry }: Props) {
   const [scenes, setScenes] = useState<Scene[]>([])
   const [shots, setShots] = useState<Shot[]>([])
   const [sfxEntries, setSfxEntries] = useState<SfxEntry[]>([])
@@ -16,6 +18,7 @@ export default function SceneList({ projectId, assets }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [newSceneTitle, setNewSceneTitle] = useState('')
   const [addingScene, setAddingScene] = useState(false)
+  const [draftingGrokPromptShotId, setDraftingGrokPromptShotId] = useState<string | null>(null)
 
   async function refresh() {
     setLoading(true)
@@ -94,6 +97,29 @@ export default function SceneList({ projectId, assets }: Props) {
     guard(async () => setShots(await window.api.moveShot(projectId, shotId, direction)))
   }
 
+  /**
+   * "✨ Draft Grok Prompt" (2026-09-14). If the shot already has a linked
+   * entry, just navigate — no duplicate. Otherwise create one Grok Prompt
+   * Lab entry, seeded from the shot's title/description (which carries
+   * forward any script detail the outline generator preserved verbatim,
+   * per this round's other fix), link it to the shot, then navigate.
+   */
+  async function handleDraftGrokPrompt(shot: Shot) {
+    if (draftingGrokPromptShotId) return
+    setDraftingGrokPromptShotId(shot.id)
+    await guard(async () => {
+      let entryId = shot.linkedGrokEntryId
+      if (!entryId) {
+        const seed = [shot.title, shot.description].filter((s) => s.trim()).join('\n\n') || shot.title
+        const entries = await window.api.createPromptEntry(projectId, 'grok', { promptText: seed })
+        entryId = entries[0].id // listPromptEntries/createPromptEntry both return newest-first
+        setShots(await window.api.updateShot(projectId, shot.id, { linkedGrokEntryId: entryId }))
+      }
+      onOpenGrokEntry(entryId)
+    })
+    setDraftingGrokPromptShotId(null)
+  }
+
   if (loading) return <p className="muted">Loading scenes…</p>
 
   return (
@@ -123,6 +149,8 @@ export default function SceneList({ projectId, assets }: Props) {
           onUpdateShot={handleUpdateShot}
           onDeleteShot={handleDeleteShot}
           onMoveShot={handleMoveShot}
+          onDraftGrokPrompt={handleDraftGrokPrompt}
+          draftingGrokPromptShotId={draftingGrokPromptShotId}
         />
       ))}
 

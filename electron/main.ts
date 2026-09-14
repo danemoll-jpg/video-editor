@@ -183,6 +183,7 @@ ipcMain.handle(
       status?: ShotStatus
       linkedAssetId?: string | null
       linkedSfxIds?: string[]
+      linkedGrokEntryId?: string | null
     },
   ) => productionManager.updateShot(projectId, shotId, updates),
 )

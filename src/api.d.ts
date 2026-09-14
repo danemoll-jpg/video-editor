@@ -147,6 +147,7 @@ declare global {
           status?: ShotStatus
           linkedAssetId?: string | null
           linkedSfxIds?: string[]
+          linkedGrokEntryId?: string | null
         },
       ): Promise<Shot[]>
       deleteShot(projectId: string, shotId: string): Promise<Shot[]>

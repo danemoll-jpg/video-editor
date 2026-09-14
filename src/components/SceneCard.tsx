@@ -22,6 +22,8 @@ interface Props {
   onUpdateShot: (shotId: string, updates: ShotUpdates) => void
   onDeleteShot: (shotId: string) => void
   onMoveShot: (shotId: string, direction: 'up' | 'down') => void
+  onDraftGrokPrompt: (shot: Shot) => void
+  draftingGrokPromptShotId: string | null
 }
 
 export default function SceneCard({
@@ -38,6 +40,8 @@ export default function SceneCard({
   onUpdateShot,
   onDeleteShot,
   onMoveShot,
+  onDraftGrokPrompt,
+  draftingGrokPromptShotId,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(scene.title)
@@ -157,6 +161,8 @@ export default function SceneCard({
                 onUpdate={(updates) => onUpdateShot(shot.id, updates)}
                 onDelete={() => onDeleteShot(shot.id)}
                 onMove={(direction) => onMoveShot(shot.id, direction)}
+                onDraftGrokPrompt={() => onDraftGrokPrompt(shot)}
+                draftingGrokPrompt={draftingGrokPromptShotId === shot.id}
               />
             ))
           )}

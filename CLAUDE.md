@@ -137,13 +137,28 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
-**NEW, PRIORITY (2026-09-14): two fixes to the scene/shot outline
-generator**, found from Dan's real use — (1) preserve structured script
-detail (timestamps, quoted lyrics, shot codes, comp/motion notes)
-verbatim instead of summarizing it away, and (2) a "✨ Draft Grok Prompt"
-button linking each shot to its own Grok Prompt Lab entry, opening
-straight into Prompt Lab with the AI Assistant ready, instead of manual
-copy-between-tabs. See TODO.md's Current Objective for full scope.
+**Two fixes to the scene/shot outline generator — BUILT (2026-09-14), not
+yet confirmed by Dan's own hands**, found from Dan's real use. (1) The
+outline generator's system prompt (`aiAssistantManager.ts`'s
+`SCENE_OUTLINE_SYSTEM_PROMPT`, now exported for scripted verification) now
+explicitly instructs preserving structured script detail — timestamps,
+quoted/music-marked lyrics, shot/scene codes, "COMP NOTE:"/"Motion:"-style
+labeled notes — verbatim inside a generated shot's description rather than
+summarizing over it, with Dan's own real example embedded as the
+illustration. (2) A "✨ Draft Grok Prompt" button on each shot in Scenes &
+Shots (`ShotCard.tsx`) creates (or reuses) that shot's one linked Grok
+Prompt Lab entry — new `Shot.linkedGrokEntryId` field — seeding its prompt
+from the shot's title/description, then navigates to Prompt Lab → Grok with
+that entry expanded and its AI Assistant panel already expanded/focused
+(new `autoOpen`/`autoExpand` props on `AiAssistantPanel`/`PromptEntryCard`,
+driven by a `promptLabFocusEntryId` in `ProjectView.tsx`) — no manual
+copy-between-tabs, and no duplicate entry on a repeat click. Deliberately
+untouched: the shot's older standalone `promptText`/Copy-Prompt field. See
+TODO.md's Current Objective for the full built/verified record — what's
+still open is Dan's own click-through (both items) and a real model-call
+test of item 1 against his actual, messier scripts (not just the one worked
+example), same "don't spend Dan's money without him present" discipline as
+every prior AI-calling feature's rollout.
 
 **URGENT, PRIORITY data-loss bug — RESOLVED (2026-09-14), built and
 verified.** Dan lost an AI Assistant conversation and typed Idea notes

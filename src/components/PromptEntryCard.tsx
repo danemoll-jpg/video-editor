@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Asset, PromptEntry, PromptEntryUpdates, RatingInput } from '../api'
 import type { RatingDimension } from '../../electron/promptLabTypes'
 import { formatDate } from '../format'
@@ -20,6 +20,13 @@ interface Props {
   onDeleteRating: (ratingId: string) => void
   onPromote: (name: string) => void
   onNewVersion: () => void
+  /**
+   * Starts this card expanded and scrolled into view — set by
+   * `PromptLabPanel` when this is the entry a "✨ Draft Grok Prompt" shot
+   * navigation (2026-09-14) landed on, so it's immediately visible/open
+   * rather than requiring the user to find and expand it themselves.
+   */
+  autoExpand?: boolean
 }
 
 function emptyScores(dimensions: RatingDimension[]): Record<string, number> {
@@ -41,8 +48,15 @@ export default function PromptEntryCard({
   onDeleteRating,
   onPromote,
   onNewVersion,
+  autoExpand,
 }: Props) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(!!autoExpand)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (autoExpand) rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [editing, setEditing] = useState(false)
   const [promptText, setPromptText] = useState(entry.promptText)
   const [lyrics, setLyrics] = useState(entry.lyrics)
@@ -115,7 +129,7 @@ export default function PromptEntryCard({
   }
 
   return (
-    <div className="prompt-entry-card">
+    <div className="prompt-entry-card" ref={rootRef}>
       <div className="prompt-entry-card__row">
         <input
           type="checkbox"

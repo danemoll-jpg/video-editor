@@ -75,6 +75,7 @@ const api = {
       status?: ShotStatus
       linkedAssetId?: string | null
       linkedSfxIds?: string[]
+      linkedGrokEntryId?: string | null
     },
   ): Promise<Shot[]> => ipcRenderer.invoke('shots:update', projectId, shotId, updates),
   deleteShot: (projectId: string, shotId: string): Promise<Shot[]> =>

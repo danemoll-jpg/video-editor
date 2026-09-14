@@ -40,6 +40,19 @@ import { SHOT_STATUSES, type ShotStatus } from './shotStatus'
 // Both lists default to `[]` for shots/scenes read from before this field
 // existed (see `normalizeShot`/`normalizeScene` below).
 //
+// 2026-09-14 added a third link on shots: `linkedGrokEntryId`, an optional
+// pointer to exactly one entry in the Grok Prompt Lab
+// (electron/promptLabManager.ts, `kind: 'grok'`) — the "✨ Draft Grok
+// Prompt" button's target. One entry per shot, not a list: the Prompt Lab
+// already tracks multiple rated attempt-versions *within* one entry (its
+// `parentId` version chain), so a shot needing more than one Grok attempt
+// means creating new versions of that same entry, not linking a second
+// entry. Deliberately separate from the shot's older standalone
+// `promptText`/Copy-Prompt field (Phase 2) — whether those two should
+// eventually merge is an open question, not resolved by this field.
+// Defaults to `null` for shots read from before this field existed (see
+// `normalizeShot` below).
+//
 // Within a scene's shots (and within the project's scenes), `order` is
 // always kept as a contiguous 0..n-1 permutation — every mutation either
 // appends the next integer or renumbers/swaps in place — so callers can
@@ -77,6 +90,8 @@ export interface Shot {
   linkedAssetId: string | null
   /** Ids into the unified SFX system (sfxLibraryManager.ts) — the SFX linked to this shot. Not capped at one. */
   linkedSfxIds: string[]
+  /** Id of this shot's Grok Prompt Lab entry (promptLabManager.ts, kind 'grok'), if drafted. At most one. */
+  linkedGrokEntryId: string | null
   createdAt: string
   updatedAt: string
 }
@@ -130,9 +145,9 @@ function normalizeScene(scene: Scene): Scene {
   return { ...scene, linkedSongAssetIds: scene.linkedSongAssetIds ?? [] }
 }
 
-/** Backfills `linkedSfxIds` for shots read from before that field existed. */
+/** Backfills `linkedSfxIds`/`linkedGrokEntryId` for shots read from before those fields existed. */
 function normalizeShot(shot: Shot): Shot {
-  return { ...shot, linkedSfxIds: shot.linkedSfxIds ?? [] }
+  return { ...shot, linkedSfxIds: shot.linkedSfxIds ?? [], linkedGrokEntryId: shot.linkedGrokEntryId ?? null }
 }
 
 /** Re-numbers `order` to a contiguous 0..n-1 by current relative order, in place. */
@@ -305,6 +320,7 @@ export class ProductionManager {
       order: siblingCount,
       linkedAssetId: null,
       linkedSfxIds: [],
+      linkedGrokEntryId: null,
       createdAt: now,
       updatedAt: now,
     })
@@ -323,6 +339,7 @@ export class ProductionManager {
       status?: ShotStatus
       linkedAssetId?: string | null
       linkedSfxIds?: string[]
+      linkedGrokEntryId?: string | null
     },
   ): Promise<Shot[]> {
     const dir = await requireProjectDir(projectId)
@@ -343,6 +360,7 @@ export class ProductionManager {
     }
     if (updates.linkedAssetId !== undefined) shot.linkedAssetId = updates.linkedAssetId
     if (updates.linkedSfxIds !== undefined) shot.linkedSfxIds = updates.linkedSfxIds
+    if (updates.linkedGrokEntryId !== undefined) shot.linkedGrokEntryId = updates.linkedGrokEntryId
     shot.updatedAt = new Date().toISOString()
 
     await this.writeShots(dir, shots)
@@ -455,6 +473,7 @@ export class ProductionManager {
           order: shotOrder++,
           linkedAssetId: null,
           linkedSfxIds: [],
+          linkedGrokEntryId: null,
           createdAt: now,
           updatedAt: now,
         })
