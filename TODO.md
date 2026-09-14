@@ -1191,6 +1191,28 @@ decided — its live preview was already correct via a CSS flip.
 
 Current Objective (Focus Area)
 
+**URGENT, PRIORITY (2026-09-14): real data loss on a real project — this
+is next, now that the chroma-key preview-accuracy work below is done.**
+Dan lost both an AI Assistant conversation (a genuinely good idea, per
+him) and typed Idea notes, all at once, by switching tabs without saving —
+on real project work, not test data. Confirmed directly with Dan: he never
+saved, and never realized he needed to.
+- **AI Assistant conversation history must persist automatically, with no
+  manual save step at all.** This was originally specced (Phase 4) to save
+  "per project, per context" — losing a whole conversation like this means
+  that's not actually holding up reliably in practice, which makes this a
+  real regression to fix, not new scope. Persist each message as it's
+  sent/received, not batched or dependent on any explicit action.
+- **Idea and Script notes need real autosave (debounced, e.g. save
+  shortly after typing pauses), not just the current explicit Save
+  button/Ctrl+S.** Dan's own words: "I can't have to remember to save
+  before switching tabs" — the fix is removing the need to remember, not
+  a better warning. Apply to both tabs, since both currently share the
+  identical explicit-save-only design and the identical risk.
+- Verify by actually reproducing Dan's scenario: type into Idea notes
+  and/or chat with the AI Assistant, switch tabs without manually saving,
+  switch back, confirm nothing is lost.
+
 **Phase 3 is now considered complete.** The SFX/ElevenLabs typing bug
 (investigated above) turned out to be intermittent, not a real defect —
 confirmed by Dan that it now works fine even via the exact repro steps that

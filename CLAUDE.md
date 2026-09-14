@@ -137,6 +137,16 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
+**URGENT, PRIORITY (2026-09-14): a real data-loss bug is next, now that
+the chroma-key preview-accuracy fix below is done.** Dan lost an AI
+Assistant conversation and typed Idea notes together by switching tabs
+without saving, on real project work. Two fixes needed: (1) AI Assistant
+conversation history must persist automatically per message, no manual
+save — it was specced this way in Phase 4 but isn't holding up in
+practice, so this is a regression; (2) Idea and Script notes need real
+debounced autosave, not just the current explicit Save button. See
+TODO.md's Current Objective for full detail.
+
 This is **Dan's Video Studio** — a personal desktop app covering the full
 creative process (idea → script → scenes → shots → AI prompts → generated
 assets → editing → export), not just a video editor. **Phase 1
