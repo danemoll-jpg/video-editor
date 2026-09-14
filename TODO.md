@@ -1467,6 +1467,31 @@ results, reported per item:**
       (better lighting, spill suppression, or a lower similarity with
       accepted incomplete background removal), not something the app can
       fix in the abstract.
+
+**New, DECIDED (2026-09-14): scope and build the live-preview accuracy fix
+now, not backlogged.** The live preview's chroma-key rendering must match
+FFmpeg's real `chromakey` filter, not the current simplified
+RGB-Euclidean-distance hard cutoff. Requirements:
+- Study FFmpeg's actual `chromakey` filter implementation (its real
+  YUV-chroma-plane-based distance formula and how `similarity`/`blend`
+  produce a graduated alpha) rather than approximating from description —
+  get the real math right, not a closer guess.
+- Reimplement that algorithm in the preview's canvas-based compositing
+  (not a background FFmpeg proxy render like the reverse-preview feature
+  used — chroma key is tuned interactively via sliders, and a render
+  round-trip per adjustment would be too slow for that workflow; this
+  needs to stay real-time in JS/canvas).
+- Use `blend` for real graduated partial-alpha, not just a hard cutoff —
+  the current preview ignores `blend` entirely.
+- **Verify correctness the same rigorous way item 3's root cause was
+  found:** pixel-level comparison of the new preview algorithm's output
+  against real FFmpeg `chromakey` output, on the same real frames, not
+  just "looks similar." Test against Dan's actual problem clip specifically
+  (it's a known real-world case where the two algorithms disagreed sharply)
+  as well as a cleaner synthetic case.
+- Goal: once this ships, a similarity/blend setting that looks safe in the
+  live preview should reliably mean it's actually safe on export — closing
+  the exact trust gap that let this whole bug hide for three rounds.
 - **Item 5 (library relocation): a real, serious bug — surfaced mid-move
   and needs to be the priority fix.** Dan's "Move Library" attempt threw
   `EPERM: operation not permitted, rmdir` on a `promptlab` folder inside a

@@ -240,9 +240,11 @@ predict what a given setting will do on export, for any clip. **No code
 changed this round** — this is a two-part finding (this shot's own
 keyability, plus the preview/export algorithm mismatch as a real, separate
 app bug worth its own round) rather than a one-line patch, per the
-explicit ask to report rather than force a fix. See TODO.md's Current
-Objective (Item 3) for the full pixel-verified writeup and Technical Notes
-for the recommended next step (reconciling the preview's chroma-key math
-with FFmpeg's real filter). See TODO.md's Current Objective and Completed
-Tasks for the full per-item record, including Dan's own click-through of
-the reverse preview, which is still outstanding.
+explicit ask to report rather than force a fix. **DECIDED (2026-09-14):
+the preview/export mismatch gets fixed now, not backlogged** — the
+preview's canvas-based chroma-key rendering needs to be reimplemented to
+match FFmpeg's real YUV-based graduated algorithm (studied from FFmpeg's
+actual filter, not approximated), including real `blend` support, verified
+by pixel-level comparison against real FFmpeg output on Dan's actual
+problem clip. See TODO.md's Current Objective (Item 3) for the full
+pixel-verified writeup and the new preview-fix requirements.
