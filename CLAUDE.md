@@ -137,6 +137,14 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
+**NEW, PRIORITY (2026-09-14): two fixes to the scene/shot outline
+generator**, found from Dan's real use — (1) preserve structured script
+detail (timestamps, quoted lyrics, shot codes, comp/motion notes)
+verbatim instead of summarizing it away, and (2) a "✨ Draft Grok Prompt"
+button linking each shot to its own Grok Prompt Lab entry, opening
+straight into Prompt Lab with the AI Assistant ready, instead of manual
+copy-between-tabs. See TODO.md's Current Objective for full scope.
+
 **URGENT, PRIORITY data-loss bug — RESOLVED (2026-09-14), built and
 verified.** Dan lost an AI Assistant conversation and typed Idea notes
 together by switching tabs without saving, on real project work. Root

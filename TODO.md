@@ -1191,6 +1191,43 @@ decided — its live preview was already correct via a CSS flip.
 
 Current Objective (Focus Area)
 
+**NEW, PRIORITY (2026-09-14), jumps ahead of Phase 7 (consistent with
+every recent feature — not re-asked this time, but noted for the record):
+two fixes to the scene/shot outline generator, found via Dan's real use.**
+
+1. **Preserve structured script detail verbatim instead of summarizing it
+   away.** Dan's real script format is rich and already shot-structured —
+   e.g. `**S17 | 0:55–0:58 | FULL** 🎵 *"Making distance disappear."* Wide
+   of the shared couch. Abi is very slightly translucent... *Motion:
+   static, gentle.* **COMP NOTE:** Abi layer at 88% opacity, feathered
+   edge.` — with an explicit shot code, exact timing, a quoted lyric line,
+   motion notes, and comp notes all inline. The current generator throws
+   this away and writes a generic paraphrase instead. Fix: update
+   `generateSceneOutline`'s system prompt to explicitly instruct the model
+   to preserve, verbatim, any timestamps/time ranges, quoted or
+   music-marked lyric lines, explicit shot/scene codes, and clearly-marked
+   notes (e.g. "COMP NOTE:", "Motion:") found in the script text — fold
+   them directly into the generated shot's description rather than
+   summarizing over them. Use Dan's exact example above as a concrete test
+   case, not just a general instruction to "do better."
+2. **A direct path from a shot to drafting its Grok prompt with AI help**,
+   instead of Dan manually copying context between tabs. Scope: add a new
+   link, one Grok Prompt Lab entry per shot (matches the Prompt Lab's
+   existing design, which already tracks multiple rated attempt-versions
+   *within* one entry — no need for a second, competing versioning
+   concept). A "✨ Draft Grok Prompt" button on each shot in the Scenes &
+   Shots tab: if the shot has no linked entry yet, create one, seed its
+   starting prompt draft from the shot's title/description (which, once
+   fix 1 above ships, will already carry forward any preserved
+   lyric/timing/comp-note detail), link it to the shot, then navigate to
+   Prompt Lab → Grok with that entry open and its AI Assistant chat panel
+   expanded/focused, ready to iterate. If already linked, just navigate
+   straight to the existing entry — no duplicate. **Explicitly not
+   addressed this round:** whether the shot's own older standalone
+   `promptText`/Copy-Prompt field (from Phase 2) should be deprecated or
+   merged with this new flow — flagging that as a real open question for
+   later, not resolving it now to avoid scope creep on this round.
+
 **URGENT, PRIORITY (2026-09-14): real data loss on a real project — this
 is next, now that the chroma-key preview-accuracy work below is done.**
 Dan lost both an AI Assistant conversation (a genuinely good idea, per
