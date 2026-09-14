@@ -22,13 +22,17 @@ interface Props {
   onDelete: () => void
   onMove: (direction: 'up' | 'down') => void
   /**
-   * "✨ Draft Grok Prompt" (2026-09-14): if the shot has no linked Grok
-   * Prompt Lab entry yet, create one (seeded from this shot's title/
-   * description), link it, and navigate to Prompt Lab → Grok with it open;
-   * if already linked, just navigate there — no duplicate. The actual
-   * create-and-link work happens up in `SceneList` (which owns `shots` and
-   * has `window.api`), not here — this component only triggers it and
-   * shows a busy state while it's in flight.
+   * "✨ Draft Grok Prompt" (2026-09-14, revised again the same day). If the
+   * shot has no linked Grok Prompt Lab entry yet: create one (seeded from
+   * this shot's title/description), link it, place a fuller draft request
+   * (that seed plus the project's Idea notes as context) unsent into the
+   * Grok AI Assistant's composer, and navigate to Prompt Lab → Grok with it
+   * open, composer focused — Dan reviews/edits and sends it himself; no
+   * automatic API call. If already linked, just navigate there — no
+   * duplicate, no re-draft. The actual create/link/draft work happens up in
+   * `SceneList` (which owns `shots` and has `window.api`), not here — this
+   * component only triggers it and shows a busy state while it's in
+   * flight.
    */
   onDraftGrokPrompt: () => void
   draftingGrokPrompt: boolean
@@ -105,7 +109,7 @@ export default function ShotCard({
           title={
             shot.linkedGrokEntryId
               ? "Open this shot's linked Grok Prompt Lab entry"
-              : 'Create a Grok Prompt Lab entry for this shot, seeded from its title/description, and open it with AI help'
+              : 'Create a Grok Prompt Lab entry for this shot and place a draft AI Assistant request (ready to review and send) in its composer'
           }
           onClick={onDraftGrokPrompt}
         >

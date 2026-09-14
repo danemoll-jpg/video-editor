@@ -137,34 +137,47 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
-**Two fixes to the scene/shot outline generator — BUILT (2026-09-14), not
-yet confirmed by Dan's own hands**, found from Dan's real use. (1) The
-outline generator's system prompt (`aiAssistantManager.ts`'s
+**Two fixes to the scene/shot outline generator**, found from Dan's real
+use. (1) The outline generator's system prompt (`aiAssistantManager.ts`'s
 `SCENE_OUTLINE_SYSTEM_PROMPT`, now exported for scripted verification) now
 explicitly instructs preserving structured script detail — timestamps,
 quoted/music-marked lyrics, shot/scene codes, "COMP NOTE:"/"Motion:"-style
 labeled notes — verbatim inside a generated shot's description rather than
 summarizing over it, with Dan's own real example embedded as the
-illustration. (2) A "✨ Draft Grok Prompt" button on each shot in Scenes &
-Shots (`ShotCard.tsx`) creates (or reuses) that shot's one linked Grok
-**Item 1 (verbatim script-detail preservation) — CONFIRMED by Dan
-(2026-09-14), working.** Closed.
+illustration. **CONFIRMED by Dan (2026-09-14), working.** Closed.
+(2) A "✨ Draft Grok Prompt" button on each shot in Scenes & Shots
+(`ShotCard.tsx`) creates (or reuses) that shot's one linked Grok Prompt Lab
+entry — see the next item for its final, built design.
 
-**Item 2 (shot → Grok prompt) — REVISED AGAIN (2026-09-14), final design
-before handoff.** Dan reconsidered before this was built: he wants a
-review step before anything goes to the API. **Final design:** on first
-click for an unlinked shot, assemble the draft-request (shot
-title/description with fix 1's preserved detail, plus the project's Idea
-notes as style/rules context) and place it **unsent** into the AI
-Assistant's composer, expanded/focused — no automatic API call. Dan
-reviews/edits, sends it himself when ready. Once he sends and a response
-comes back, **that response still auto-inserts into the entry's prompt
-field** (confirmed explicitly — only the outgoing request needed a human
-checkpoint, not the result). Idea notes context: v1 only, richer context
-(recipes, prior patterns) explicitly deferred. Scope boundary unchanged:
-only the first click on an unlinked shot triggers this; an already-linked
-shot still just navigates, never re-drafts over Dan's own edits. See
-TODO.md's Current Objective (item 2) for full detail.
+**Item 2 (shot → Grok prompt) — BUILT and scripted-verified (2026-09-14),
+matches the "REVISED AGAIN" final design (not the earlier auto-send design
+it superseded).** Dan wanted a review step before anything goes to the API.
+**As built:** on first click for an unlinked shot, `SceneList.tsx` still
+creates and links a Grok Prompt Lab entry seeded from the shot's title/
+description (fix 1's preserved detail included), then assembles a fuller
+draft-request — that same seed, prefixed with the project's Idea notes as
+style/rules context when any exist — and places it **unsent** into the Grok
+AI Assistant's composer (via the same persisted-draft mechanism the data-
+loss fix below already relies on), expanded/focused — no automatic API
+call. Dan reviews/edits, sends it himself when ready. Once he sends and a
+real response comes back, `AiAssistantPanel.tsx`'s new `onAutoInsert`
+callback — armed only for that specific send, via state threaded down from
+`ProjectView.tsx` through `PromptLab.tsx`/`PromptLabPanel.tsx` — **auto-
+inserts that response into the entry's prompt field**, the same effect as
+clicking "Insert," with no further clicks; a second, unrelated message sent
+later in the same panel visit does not re-trigger it. Idea notes context:
+v1 only (richer context — recipes, prior patterns — stays deferred). Scope
+boundary verified in code, not just by convention: the draft/auto-insert
+logic only runs inside the "not yet linked" branch, so an already-linked
+shot's click still just navigates, never re-drafts over Dan's own edits.
+**Verification:** two scripted Playwright passes against the real, built
+app — one exercising the real request-assembly/no-auto-send/navigation path
+end-to-end with zero mocking, one exercising the real send→auto-insert
+round trip against a temporary, git-ignored, immediately-reverted patch to
+the compiled Anthropic call (swapped for a canned reply, so no real API
+cost) — both passed every assertion. **Not yet confirmed: Dan's own
+hands-on pass with his real Anthropic key.** See TODO.md's Current
+Objective (item 2) for the full build/verification writeup.
 
 **URGENT, PRIORITY data-loss bug — RESOLVED (2026-09-14), built and
 verified.** Dan lost an AI Assistant conversation and typed Idea notes

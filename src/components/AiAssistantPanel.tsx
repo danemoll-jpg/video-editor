@@ -18,6 +18,19 @@ interface Props {
    * collapse it normally afterward.
    */
   autoOpen?: boolean
+  /**
+   * When provided, the reply to this panel's *first* successful send (after
+   * mount) is passed here automatically instead of waiting for a manual
+   * "Insert" click — the "✨ Draft Grok Prompt" flow's review-step design
+   * (revised 2026-09-14): the drafted request sits unsent in the composer
+   * (via the persisted draft, same as any other composer text) for Dan to
+   * review/edit and send himself, but once he does and a real reply comes
+   * back, that reply auto-inserts. Read only at mount time (see the
+   * `useState` initializer below) and disarms itself after firing once, so
+   * it never fires again for later sends in the same panel visit even
+   * though the prop itself only changes when the caller re-renders.
+   */
+  onAutoInsert?: (text: string) => void
 }
 
 /**
@@ -30,8 +43,11 @@ interface Props {
  *
  * Deliberately doesn't pull in anything from the rest of the project (the
  * script, other prompts, etc.) — only what's typed here is sent to
- * Anthropic. `onInsert` is how a reply gets into the current tab's field;
- * this component has no idea what that field is.
+ * Anthropic. `onInsert` is how a reply gets into the current tab's field on
+ * a manual click; `onAutoInsert` (2026-09-14) is the same idea but fired
+ * automatically for one specific reply — see its own doc comment above.
+ * This component has no idea what either callback's target field actually
+ * is.
  *
  * Every *sent* message was always persisted immediately by
  * `aiAssistantManager.sendMessage` (main process), with no manual-save step
@@ -41,7 +57,7 @@ interface Props {
  * state — silently destroyed the instant this panel unmounts, e.g. by
  * switching tabs — was the real cause behind "lost a whole conversation."
  */
-export default function AiAssistantPanel({ projectId, context, label, onInsert, autoOpen }: Props) {
+export default function AiAssistantPanel({ projectId, context, label, onInsert, autoOpen, onAutoInsert }: Props) {
   const [expanded, setExpanded] = useState(!!autoOpen)
   const [loaded, setLoaded] = useState(false)
   const [messages, setMessages] = useState<AiMessage[]>([])
@@ -49,6 +65,10 @@ export default function AiAssistantPanel({ projectId, context, label, onInsert, 
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Armed only when this panel mounted with an `onAutoInsert` target — see
+  // that prop's doc comment. Reset alongside everything else when the
+  // project/context this panel is showing changes (below).
+  const [awaitingAutoInsertReply, setAwaitingAutoInsertReply] = useState(!!onAutoInsert)
   const listRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
 
@@ -59,6 +79,7 @@ export default function AiAssistantPanel({ projectId, context, label, onInsert, 
     setMessages([])
     setDraft('')
     setError(null)
+    setAwaitingAutoInsertReply(!!onAutoInsert)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, context])
 
@@ -107,13 +128,24 @@ export default function AiAssistantPanel({ projectId, context, label, onInsert, 
     if (!text || sending) return
     setSending(true)
     try {
-      setMessages(await window.api.sendAiMessage(projectId, context, text))
+      const updated = await window.api.sendAiMessage(projectId, context, text)
+      setMessages(updated)
       setDraft('')
       // Clear the persisted draft right away rather than waiting for the
       // autosave debounce to notice `draft` went back to '' — the message
       // it held has now actually been sent (and persisted) for real.
       window.api.saveAiDraft(projectId, context, '').catch(() => {})
       setError(null)
+      // "✨ Draft Grok Prompt" review-step design (2026-09-14): if this
+      // panel was armed with an auto-insert target, this send's reply is
+      // that target's answer — hand it straight to `onAutoInsert` instead
+      // of waiting for a manual "Insert" click, then disarm so later sends
+      // in this same panel visit behave normally.
+      if (awaitingAutoInsertReply && onAutoInsert) {
+        const reply = [...updated].reverse().find((m) => m.role === 'assistant')
+        if (reply) onAutoInsert(reply.content)
+        setAwaitingAutoInsertReply(false)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {

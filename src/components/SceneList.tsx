@@ -6,8 +6,16 @@ import type { ShotUpdates } from './ShotCard'
 interface Props {
   projectId: string
   assets: Asset[]
-  /** Called with a shot's linked (or newly created) Grok Prompt Lab entry id once ready to navigate there. */
-  onOpenGrokEntry: (entryId: string) => void
+  /**
+   * Called with a shot's linked (or newly created) Grok Prompt Lab entry id
+   * once ready to navigate there. `armAutoInsert` is true only on a fresh
+   * first-click draft (a brand-new entry, its draft request just placed
+   * unsent into the AI Assistant composer) — see `handleDraftGrokPrompt`
+   * below — so the landing panel knows to auto-insert the *next* AI reply
+   * into this entry's prompt field instead of the normal manual-Insert
+   * flow. A plain navigate to an already-linked entry passes `false`.
+   */
+  onOpenGrokEntry: (entryId: string, armAutoInsert: boolean) => void
 }
 
 export default function SceneList({ projectId, assets, onOpenGrokEntry }: Props) {
@@ -98,24 +106,43 @@ export default function SceneList({ projectId, assets, onOpenGrokEntry }: Props)
   }
 
   /**
-   * "✨ Draft Grok Prompt" (2026-09-14). If the shot already has a linked
-   * entry, just navigate — no duplicate. Otherwise create one Grok Prompt
-   * Lab entry, seeded from the shot's title/description (which carries
-   * forward any script detail the outline generator preserved verbatim,
-   * per this round's other fix), link it to the shot, then navigate.
+   * "✨ Draft Grok Prompt" (2026-09-14, revised again the same day per Dan's
+   * request for a review step before anything hits the API). If the shot
+   * already has a linked entry, just navigate — no duplicate, no re-draft.
+   * Otherwise: create one Grok Prompt Lab entry (seeded from the shot's
+   * title/description, which carries forward any script detail the outline
+   * generator preserved verbatim, per this round's other fix) and link it
+   * to the shot immediately, same as before — but instead of stopping
+   * there, also assemble a fuller draft-request (the same seed, prefixed
+   * with the project's Idea notes as style/rules context if any exist) and
+   * place it, unsent, into the Grok AI Assistant's composer via
+   * `saveAiDraft` — the same persistence `AiAssistantPanel` already reads
+   * on expand, so it shows up there pre-filled with nothing more than a
+   * normal navigate. No Anthropic call happens here; Dan reviews/edits and
+   * sends it himself. `armAutoInsert: true` tells the landing panel to
+   * auto-insert *that* send's reply into this entry's prompt field once it
+   * comes back, instead of requiring a manual "Insert" click.
    */
   async function handleDraftGrokPrompt(shot: Shot) {
     if (draftingGrokPromptShotId) return
     setDraftingGrokPromptShotId(shot.id)
     await guard(async () => {
       let entryId = shot.linkedGrokEntryId
+      let armAutoInsert = false
       if (!entryId) {
         const seed = [shot.title, shot.description].filter((s) => s.trim()).join('\n\n') || shot.title
         const entries = await window.api.createPromptEntry(projectId, 'grok', { promptText: seed })
         entryId = entries[0].id // listPromptEntries/createPromptEntry both return newest-first
         setShots(await window.api.updateShot(projectId, shot.id, { linkedGrokEntryId: entryId }))
+
+        const idea = await window.api.getIdea(projectId)
+        const draftRequest = idea.content.trim()
+          ? `Project style/rules notes (from the Idea tab), for context:\n${idea.content.trim()}\n\n---\n\nDraft a Grok video-generation prompt for this shot:\n\n${seed}`
+          : `Draft a Grok video-generation prompt for this shot:\n\n${seed}`
+        await window.api.saveAiDraft(projectId, 'grok', draftRequest)
+        armAutoInsert = true
       }
-      onOpenGrokEntry(entryId)
+      onOpenGrokEntry(entryId, armAutoInsert)
     })
     setDraftingGrokPromptShotId(null)
   }

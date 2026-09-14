@@ -37,14 +37,30 @@ export default function ProjectView({ projectId, onBack }: Props) {
   // the user leaves the Prompt Lab tab, so a later *manual* visit to Prompt
   // Lab doesn't re-trigger an old navigation's auto-expand/auto-scroll.
   const [promptLabFocusEntryId, setPromptLabFocusEntryId] = useState<string | null>(null)
+  // Revised the same day: which entry (if any) the Grok AI Assistant's
+  // *next* reply should auto-insert into, instead of requiring a manual
+  // "Insert" click — armed only on a fresh draft-request navigation (a
+  // brand-new entry, its draft request just placed unsent into the
+  // composer by `SceneList`), never on a plain re-navigate to an
+  // already-linked entry. Cleared the same way as the focus id above, plus
+  // as soon as the auto-insert actually fires (`handleAutoInsertConsumed`).
+  const [promptLabAutoInsertEntryId, setPromptLabAutoInsertEntryId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (tab !== 'promptlab') setPromptLabFocusEntryId(null)
+    if (tab !== 'promptlab') {
+      setPromptLabFocusEntryId(null)
+      setPromptLabAutoInsertEntryId(null)
+    }
   }, [tab])
 
-  function handleOpenGrokEntry(entryId: string) {
+  function handleOpenGrokEntry(entryId: string, armAutoInsert: boolean) {
     setPromptLabFocusEntryId(entryId)
+    setPromptLabAutoInsertEntryId(armAutoInsert ? entryId : null)
     setTab('promptlab')
+  }
+
+  function handleAutoInsertConsumed() {
+    setPromptLabAutoInsertEntryId(null)
   }
 
   async function refresh() {
@@ -263,7 +279,13 @@ export default function ProjectView({ projectId, onBack }: Props) {
 
       {tab === 'promptlab' && (
         <div className="tab-panel">
-          <PromptLab projectId={projectId} assets={assets} focusGrokEntryId={promptLabFocusEntryId} />
+          <PromptLab
+            projectId={projectId}
+            assets={assets}
+            focusGrokEntryId={promptLabFocusEntryId}
+            autoInsertGrokEntryId={promptLabAutoInsertEntryId}
+            onAutoInsertConsumed={handleAutoInsertConsumed}
+          />
         </div>
       )}
 

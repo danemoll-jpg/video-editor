@@ -1359,6 +1359,116 @@ two fixes to the scene/shot outline generator, found via Dan's real use.**
     direction (jumping from a Grok Prompt Lab entry back to the shot that
     drafted it) — not asked for.
 
+**Item 2, REVISED AGAIN — RESOLVED (2026-09-14), built and verified, matches
+the "REVISED AGAIN" final design above exactly, not the earlier "auto-send"
+design it superseded.** On first click for an unlinked shot, the flow now
+stops well short of ever calling the Anthropic API automatically:
+- `SceneList.handleDraftGrokPrompt` still creates and links a Grok Prompt
+  Lab entry exactly as before (seeded with the shot's title/description, so
+  the entry always holds a real, non-empty starting value — required, since
+  empty prompt text is rejected). New this round: it also fetches the
+  project's Idea notes (`window.api.getIdea`) and, if any exist, prepends
+  them as labeled style/rules context ahead of a "Draft a Grok
+  video-generation prompt for this shot:" instruction wrapping the same
+  seed; if Idea notes are empty, it proceeds with just the instruction +
+  seed, no error/block. That assembled text is written straight into the
+  Grok AI Assistant's persisted, not-yet-sent composer draft via the
+  existing `window.api.saveAiDraft(projectId, 'grok', draftRequest)` call —
+  the exact same file `AiAssistantPanel` already reads on expand, so no new
+  IPC surface was needed for this half. **No Anthropic call happens in this
+  function at all.**
+- Navigation (`onOpenGrokEntry`) now carries a second `armAutoInsert`
+  boolean — true only for a just-created entry on this fresh draft, false
+  for a plain re-navigate to an already-linked entry. `ProjectView` holds it
+  as new `promptLabAutoInsertEntryId` state (mirroring how
+  `promptLabFocusEntryId` already worked), threaded down through
+  `PromptLab` → `PromptLabPanel` → a new `onAutoInsert` prop on
+  `AiAssistantPanel`, cleared the same way as the focus id whenever the user
+  leaves the Prompt Lab tab.
+- **The actual auto-insert mechanism, in `AiAssistantPanel.tsx`:** a new
+  `awaitingAutoInsertReply` bit of state initializes to `true` only when
+  this panel mounted with an `onAutoInsert` target (i.e., only on the
+  landing from a fresh draft, never on an ordinary AI Assistant visit).
+  Dan's `handleSend` — completely unchanged in every other respect, so
+  editing the drafted text before sending, or not sending at all, both work
+  exactly like using the AI Assistant normally — now checks that bit right
+  after a send actually succeeds: if armed, it hands the just-returned
+  reply straight to `onAutoInsert` (which `PromptLabPanel` wires to
+  `updatePromptEntry(..., { promptText: reply })` on the specific linked
+  entry — the *same effect* as clicking that message's own "Insert" button,
+  just automatic) and then disarms itself, so a second, unrelated message
+  sent later in the same panel visit behaves like completely normal AI
+  Assistant usage and does *not* re-overwrite the entry. The manual
+  "Insert" button on every reply still works exactly as before, unrelated
+  to any of this.
+- **Scope boundary confirmed in code, not just by convention:** the whole
+  Idea-notes-fetch/draft-request/arm-auto-insert path lives inside
+  `handleDraftGrokPrompt`'s `if (!entryId)` branch — a click on an
+  already-linked shot never re-enters it, so it can never re-draft over
+  edits Dan has since made to the entry himself.
+- **Verification status:** `npm run typecheck` and `npm run build` both
+  succeed. Two scripted Playwright passes against the real, built Electron
+  window (same isolated-`--user-data-dir`-plus-pre-seeded-`libraryLocation
+  .json` technique as this feature's original rollout, so neither could
+  collide with Dan's real profile/library):
+  1. **Request side (real, no mocking, no cost):** created a project via
+     the real UI; saved real Idea notes ("House style: warm handheld 16mm
+     look..."); added a scene and a shot, saved a shot description
+     containing timestamp/shot-code/COMP-NOTE-style detail (fix 1's
+     territory). Clicked "✨ Draft Grok Prompt" and confirmed, all in the
+     live UI: navigation landed on Prompt Lab → Grok with the AI Assistant
+     panel expanded and its composer **actually focused**
+     (`document.activeElement`, not just visible); the composer's text
+     contained the Idea notes verbatim, the shot's title, and its verbatim-
+     preserved detail, wrapped in the drafting instruction; **zero messages
+     appeared in the thread and no error banner rendered** despite this
+     isolated profile having no API key configured — direct proof nothing
+     was auto-sent; exactly one Grok entry existed, correctly seeded and
+     linked. Navigated back to Scenes & Shots, confirmed the button now
+     reads "✨ Open Grok Prompt," clicked it again, and confirmed there was
+     still exactly one entry (no duplicate) and the composer still held the
+     same drafted text (no re-draft on the second, navigate-only click).
+  2. **Response side (the auto-insert itself):** since exercising this for
+     real means an actual paid Anthropic call, this pass used the same
+     "don't spend Dan's money to test something that doesn't need a real
+     model" discipline every prior phase's error-path testing used, but
+     applied to a *successful* reply instead of an error: a **temporary,
+     git-ignored, never-committed** in-place patch to the compiled
+     `dist-electron/aiAssistantManager.js` (backed up first, restored
+     immediately after — confirmed via `git status` showing only the
+     intended source-file changes and zero leftover patch markers in the
+     rebuilt output) swapped the real `client.messages.create(...)` call for
+     a fixed canned string, with everything else — the IPC plumbing, the
+     renderer, `AiAssistantPanel`'s send/insert logic, `PromptLabPanel`'s
+     wiring — genuinely real and unmodified. Against that patched build:
+     created a project/scene/shot, clicked "Draft Grok Prompt," confirmed
+     the entry's prompt field still held the placeholder seed (not yet the
+     reply), clicked the real "Send" button on the pre-filled composer text,
+     and confirmed: the canned reply appeared in the thread; the linked
+     entry's prompt text field was automatically overwritten with that
+     exact reply text (not appended, not left as the old seed) with **no
+     manual "Insert" click**; then sent a second, unrelated message in the
+     same panel visit and confirmed the entry's prompt text stayed exactly
+     the first reply — the arm-once behavior held, so a routine follow-up
+     question doesn't clobber the entry again. Full clean rebuild from
+     unmodified source afterward, confirmed via `npm run build` and a
+     content-grep of the rebuilt file (zero occurrences of the patch's test
+     markers). Both passes' throwaway projects/temp profiles were deleted
+     afterward; confirmed via direct disk inspection that Dan's real
+     library still holds only his real "teafa" project.
+- **Not yet confirmed: Dan's own hands-on pass with his real Anthropic key
+  entered in Settings** — same standing requirement as every real-model-call
+  feature in this project (Phase 4's original rollout, the outline
+  generator). The scripted passes above prove the *mechanism* end-to-end
+  (real request assembly and placement, real no-auto-send guarantee, real
+  auto-insert wiring against a real send/reply round trip through the real
+  IPC/renderer stack) — what they can't prove is whether a real Claude reply
+  to this drafted request is actually a good, ready-to-paste Grok prompt in
+  practice. Dan's own pass: pick a real shot on a real project, click
+  "Draft Grok Prompt," review/edit the pre-filled request if he wants to,
+  send it, and confirm the real reply that lands in the entry's prompt
+  field is something he'd actually want to paste into Grok.
+
 **URGENT, PRIORITY (2026-09-14): real data loss on a real project — this
 is next, now that the chroma-key preview-accuracy work below is done.**
 Dan lost both an AI Assistant conversation (a genuinely good idea, per

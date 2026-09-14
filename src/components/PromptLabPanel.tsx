@@ -22,6 +22,16 @@ interface Props {
    * card. `PromptLab` only ever passes this for `kind === 'grok'`.
    */
   focusEntryId?: string | null
+  /**
+   * The entry id (if any) whose prompt text field should be overwritten
+   * automatically with the AI Assistant's *next* reply, instead of the
+   * normal manual-"Insert" flow — set only right after a fresh draft
+   * request was placed unsent into the composer (same 2026-09-14 revision
+   * as `focusEntryId` above; also grok-only).
+   */
+  autoInsertEntryId?: string | null
+  /** Called once that auto-insert has actually happened, so the caller can clear its armed state. */
+  onAutoInsertConsumed?: () => void
 }
 
 const EMPTY_FORM = { promptText: '', lyrics: '', settings: '', notes: '', tagsText: '', linkedAssetId: '' }
@@ -35,7 +45,14 @@ const EMPTY_FORM = { promptText: '', lyrics: '', settings: '', notes: '', tagsTe
  * but with a source-conditional set of extra fields instead of a fixed
  * `kind`.
  */
-export default function PromptLabPanel({ projectId, kind, assets, focusEntryId }: Props) {
+export default function PromptLabPanel({
+  projectId,
+  kind,
+  assets,
+  focusEntryId,
+  autoInsertEntryId,
+  onAutoInsertConsumed,
+}: Props) {
   const [entries, setEntries] = useState<PromptEntry[]>([])
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [loading, setLoading] = useState(true)
@@ -179,6 +196,14 @@ export default function PromptLabPanel({ projectId, kind, assets, focusEntryId }
           setForm((f) => ({ ...f, promptText: text }))
           setShowForm(true)
         }}
+        onAutoInsert={
+          autoInsertEntryId
+            ? (text) => {
+                handleUpdateEntry(autoInsertEntryId, { promptText: text })
+                onAutoInsertConsumed?.()
+              }
+            : undefined
+        }
       />
 
       {error && <div className="error-banner">{error}</div>}
