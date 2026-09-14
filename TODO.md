@@ -1260,22 +1260,64 @@ results, reported per item:**
   reversal in the output file — worth doing once the badge is in, so both
   get confirmed together. **RESOLVED (2026-09-13): badge built** — see
   "Phase 6 continued — Dan's first-pass findings, addressed" above.
-- **Item 3 (chroma key on export): still broken, exact same symptom as
-  before** (mostly black screen) — confirmed by Dan on his real project,
-  the same case last round's synthetic tests couldn't reproduce despite
-  real effort (pixel-verified pipeline tests across several realistic
-  scenarios). **Per this project's own habit — when something fails
-  repeatedly, get real diagnostic data before trying again, don't guess
-  harder — the next step is instrumentation, not another blind fix
-  attempt.** Add temporary diagnostic logging to the actual export path
-  (the full generated `filter_complex` string, plus FFprobe'd codec/pixel
-  format/resolution for every source clip involved in that specific
-  export) so that when Dan reproduces the failure on his real project, the
-  log output itself — not another synthetic guess — points at what's
-  actually different about his case. **IN PROGRESS (2026-09-13): logging
-  built, bug not yet root-caused** — see "Phase 6 continued — Dan's
-  first-pass findings, addressed" above; still needs Dan's real repro to
-  produce an actual log to act on.
+- **Item 3 (chroma key on export): REAL DIAGNOSTIC DATA IN HAND
+  (2026-09-14) — first actual lead on this bug, after two rounds of
+  synthetic tests that couldn't reproduce it.** Dan supplied a real
+  `export-diagnostics.log` plus two screenshots (editor preview vs. the
+  exported file played in Windows Media Player) from a throwaway test
+  project (no real data). **The symptom itself is different from the
+  original report** — not solid black this time, but the opposite
+  direction: the chroma-keyed green renders fully vivid/saturated in the
+  live editor preview, and much lighter/washed-out (not gone, not solid —
+  faded) in the exported file.
+  - **The critical detail the log reveals: this clip has BOTH `chromaKey.
+    enabled=true` AND `reverse=true` set together.** Every previous test of
+    chroma key was reverse-off, and every previous test of reverse was
+    chroma-key-off — this specific combination may never have actually been
+    exercised before, on either the live-preview or export side.
+  - **Leading hypothesis, not yet confirmed by code inspection:** when
+    `reverse` is on, the live preview plays the separately-rendered reverse
+    proxy (`reverseProxyManager.ts`, built last round) instead of the
+    original asset. Per that feature's own description, the proxy is
+    generated with only `reverse`/`areverse`/`atempo` — no chroma-key baked
+    in. If `PreviewPlayer.tsx` then plays that proxy directly rather than
+    still routing it through whatever real-time chroma-key compositing
+    normally applies to non-reversed clips, the editor would show the raw,
+    unkeyed source exactly as Dan described — fully vivid green, completely
+    unprocessed. The actual FFmpeg export, meanwhile, likely *is* applying
+    `chromakey` correctly per the generated `filter_complex` — but this
+    clip's specific settings (`similarity=0.2`, `blend=0.1`, fairly
+    conservative values) may only partially fade near-matching pixels
+    rather than cleanly remove them, which would produce exactly "lighter,
+    not gone" rather than either a clean key or no key at all.
+  - **RESOLVED, this part (2026-09-14): reverse is NOT the cause.** Dan
+    re-tested the exact same clip and chroma-key settings with reverse
+    turned off — still the same washed-out result. This is the original
+    bug on its own, confirmed independent of reverse; the two-separate-
+    things framing above was worth checking but (a) is ruled out.
+  - **New concrete lead, not yet tested (2026-09-14): filter ORDER, not
+    the alpha/format chain.** Comparing this clip's filter_complex
+    (reverse on vs. off, both washed-out) against how it's built: chroma
+    key is applied **after** scaling — `crop=688:435:0:29,scale=1601:1080,
+    chromakey=...` — a >2x upscale of a real (compressed, noisy) source
+    clip happens *before* the key. Upscale interpolation can shift green
+    pixels slightly off the exact keyed color (`#31a05b`); with
+    `similarity=0.2` fairly tight, those now-slightly-off pixels stop
+    fully matching, while `blend=0.1` still partially softens them —
+    producing a hazy, partial removal across a wide area rather than a
+    clean cut, which matches "washed out" well. **Standard fix worth
+    testing directly: apply `chromakey` immediately after `crop`, before
+    `scale`**, so keying happens on exact, unscaled source pixel colors,
+    then scale the already-keyed (alpha-carrying) result. Test against
+    Dan's actual repro case (or an equivalent real, noisy/compressed
+    synthetic clip — not a clean synthetic one, since that's what let this
+    slip through twice already) with real pixel-level verification before
+    and after reordering, not just "the filter graph compiles."
+  - Full log excerpts (both reverse-on and reverse-off versions, real
+    filter_complex, FFprobe details, full FFmpeg args) available — see this
+    round's chat history / Dan's two uploaded `export-diagnostics.log`
+    files for the exact values if the version handed to the coding agent
+    needs re-supplying.
 - **Item 5 (library relocation): a real, serious bug — surfaced mid-move
   and needs to be the priority fix.** Dan's "Move Library" attempt threw
   `EPERM: operation not permitted, rmdir` on a `promptlab` folder inside a
