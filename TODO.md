@@ -1022,6 +1022,66 @@ the note in Technical Notes below for what to capture if it resurfaces.
 all nine himself, per this project's normal pattern — the list below is kept
 as the original record of what was asked for, not rewritten.
 
+**Dan's own manual click-through (2026-09-13), first pass — mixed
+results, reported per item:**
+- **Items 6, 7, 8, 10: confirmed working by Dan.** Export destination
+  choice, direct-manipulation preview editing, the right-click context
+  menu, and playhead drag precision all work as intended.
+- **Items 1 & 2: clarified, no change needed.** Dan initially expected
+  audio extraction to also remove/mute the audio from the *original* video
+  (both the standalone-asset version and the timeline version) rather than
+  just add a separate audio-only copy alongside it. On reflection he
+  doesn't need that — confirmed fine as built. (Note: item 2, the
+  timeline-clip version, *does* already turn the source clip's own audio
+  off automatically, per its original design — only item 1, the
+  Assets-tab version, leaves the source video's audio untouched, which is
+  the part Dan was reacting to and has now said is fine as-is.)
+- **Item 9 (reverse/mirror): reverse is actually working, just confusing —
+  not a bug, a missing affordance.** Dan expected checking "Reverse" to
+  visibly change the editor's live preview; per this file's own
+  documentation of the feature, that was never going to happen (browsers
+  can't play HTML5 `<video>` backwards) — but nothing in the UI told him
+  that, so it read as "does nothing." **New, small follow-up:** add a
+  visible badge/icon on a clip in the timeline when Reverse or Mirror is
+  checked, so the setting is confirmed without needing to export first.
+  Dan hasn't yet tried actually exporting that clip to confirm real
+  reversal in the output file — worth doing once the badge is in, so both
+  get confirmed together.
+- **Item 3 (chroma key on export): still broken, exact same symptom as
+  before** (mostly black screen) — confirmed by Dan on his real project,
+  the same case last round's synthetic tests couldn't reproduce despite
+  real effort (pixel-verified pipeline tests across several realistic
+  scenarios). **Per this project's own habit — when something fails
+  repeatedly, get real diagnostic data before trying again, don't guess
+  harder — the next step is instrumentation, not another blind fix
+  attempt.** Add temporary diagnostic logging to the actual export path
+  (the full generated `filter_complex` string, plus FFprobe'd codec/pixel
+  format/resolution for every source clip involved in that specific
+  export) so that when Dan reproduces the failure on his real project, the
+  log output itself — not another synthetic guess — points at what's
+  actually different about his case.
+- **Item 5 (library relocation): a real, serious bug — surfaced mid-move
+  and needs to be the priority fix.** Dan's "Move Library" attempt threw
+  `EPERM: operation not permitted, rmdir` on a `promptlab` folder inside a
+  project named `dev-mode-test-1789254212537-dea1007f` — a name pattern
+  (timestamp + random hex) that strongly suggests **leftover residue from
+  a past automated test run, not one of Dan's real projects**, sitting
+  inside his real library where it should never have been created in the
+  first place. After the error, the app's UI lost track of Dan's real
+  projects entirely ("Project not found"). **Confirmed with Dan: his real
+  project files are still physically present** at the original default
+  location — this is a UI/state bug, not data loss, but it needs to be
+  treated with real urgency and real care given what's at stake. Root
+  cause not yet confirmed, but the leading hypothesis: the persisted
+  library-location preference is likely being committed (or the app's
+  in-memory notion of "current root" is being switched) before every
+  project has *actually* finished moving successfully, rather than only
+  after full success with a clean rollback on any failure — so when the
+  stray test project's move failed partway through, the app ended up
+  looking for Dan's real projects in the wrong place even though they
+  never left the original location. **Do not attempt "Move Library"
+  again until this is fixed.**
+
 **Two more gaps identified (2026-09-13), added to Phase 6's scope before
 Phase 7 starts** — not originally specified anywhere, genuinely overlooked,
 not decided against. Speed adjustment (also asked about) turned out to
@@ -1161,6 +1221,13 @@ functional:
    each time. Considered the most distinctive long-term feature of the
    whole project — and now directly builds on Phase 4's AI Assistant/API
    plumbing rather than needing its own from scratch.
+3. **Audio editor within the Media Library.** DEFERRED (2026-09-13), not
+   decided against — Dan explicitly flagged this as "not necessarily now,"
+   a future idea rather than something to scope immediately. Not yet
+   detailed: what actual editing it should support (trim/fade/volume/
+   normalize on an audio asset directly from its Media Library card, versus
+   something closer to a full waveform editor) hasn't been discussed.
+   Scope this properly when Dan wants to pick it up.
 
 **DECIDED: explicitly out of scope, indefinitely** (not "later," genuinely
 declined) — cloud service, mobile app, social/collaboration features, a
@@ -1169,25 +1236,52 @@ Grok/Suno generation via API, and any "gigantic AI suite" scope expansion.
 
 Technical Notes / Blockers
 
-- **DEFERRED (not fixed, not decided against): chroma-key-on-export bug
-  (item 3) couldn't be reproduced this round, despite real effort.** See
-  "Phase 6 continued" in Completed Tasks above for everything that *was*
-  tested (multi-track stacking, letterboxing, transitions, speed+fades,
-  realistic noisy footage — all composited correctly against this machine's
-  exact bundled FFmpeg build) and the one concrete hardening fix that
-  shipped anyway (`overlay=format=auto` plus re-asserting `format=yuva420p`
-  end-to-end in `videoExportManager.ts`, since relying on the `overlay`
-  filter's non-alpha-carrying *default* format was real and worth closing
-  regardless of whether it was provably *this* bug). **If it resurfaces on
-  Dan's machine:** capture the exact repro this time — his project's canvas
-  resolution, the chroma key color/similarity/blend values, whether the
-  keyed clip is on a video or overlay track, whether a transition is
-  involved, and ideally the actual source clip (or a short trimmed copy of
-  it) rather than just a description, since a synthetic same-shape test
-  clip did not trigger it here. Worth checking Dan's installed
-  `ffmpeg-static` binary's exact reported version too (`ffmpeg -version`
-  via the app's bundled copy) in case it differs from the
-  6.1.1-essentials_build used for this round's testing.
+- **CONFIRMED to have resurfaced (2026-09-13): chroma-key-on-export bug
+  (item 3), same symptom, on Dan's real project — no longer just a
+  hypothetical "if it resurfaces."** See "Phase 6 continued" in Completed
+  Tasks above for everything that *was* tested last round (multi-track
+  stacking, letterboxing, transitions, speed+fades, realistic noisy
+  footage — all composited correctly against this machine's exact bundled
+  FFmpeg build) and the one concrete hardening fix that shipped anyway
+  (`overlay=format=auto` plus re-asserting `format=yuva420p` end-to-end in
+  `videoExportManager.ts`). **Next step, per this project's habit of
+  getting real diagnostic data rather than guessing again:** add temporary
+  diagnostic logging to the actual export path — the full generated
+  `filter_complex` string, plus FFprobe'd codec/pixel format/resolution for
+  every source clip involved — so Dan's own reproduction produces real
+  evidence to act on. Also worth capturing when he reproduces it: his
+  project's canvas resolution, the chroma key color/similarity/blend
+  values, whether the keyed clip is on a video or overlay track, whether a
+  transition is involved, and ideally the actual source clip (or a short
+  trimmed copy) rather than just a description, since a synthetic
+  same-shape test clip still hasn't triggered it. Worth checking Dan's
+  installed `ffmpeg-static` binary's exact reported version too (`ffmpeg
+  -version` via the app's bundled copy) in case it differs from the
+  6.1.1-essentials_build used for prior testing.
+- **NEW, urgent (2026-09-13): library relocation (item 5) has a real bug
+  that left Dan's real project list broken in the UI, though his files are
+  confirmed physically safe.** See Current Objective above for the full
+  incident writeup — the leading hypothesis is that the persisted
+  library-location preference (or the app's in-memory "current root") gets
+  switched before every project has actually finished moving successfully,
+  rather than only after full success with a clean rollback on any
+  failure. Compounding factor: the project that failed to move
+  (`dev-mode-test-1789254212537-dea1007f`) has a name pattern strongly
+  suggesting it's leftover residue from a past automated test run that got
+  created inside Dan's real library rather than a scratch folder — worth
+  auditing whether other past test rounds left similar residue behind, and
+  tightening test discipline everywhere (not just item 5's own test, which
+  was already rewritten to use a synthetic scratch fixture after a
+  near-miss during its own development) so tests can never again write
+  into the real library. **Immediate priorities, in order:** (1) get Dan's
+  real project list showing correctly again — likely means resetting the
+  persisted library-location preference back to the real default location
+  where his files actually are; (2) fix the root cause so a partial-failure
+  relocation can never again leave the app pointing at the wrong place;
+  (3) find and remove the leftover stray test project (after confirming
+  with Dan it isn't his); (4) audit for other stray test-residue projects
+  from past rounds. Dan should not attempt "Move Library" again until this
+  is fixed.
 - **Safety lesson from testing item 5 (library relocation) — worth keeping
   on record.** An early draft of this round's relocation test ran
   `relocateLibrary` directly against the real default library location to
