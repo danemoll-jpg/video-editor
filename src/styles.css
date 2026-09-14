@@ -1402,6 +1402,14 @@ body {
   padding-right: 4px;
 }
 
+.timeline__clip-badge {
+  color: #fff;
+  font-size: 11px;
+  padding-right: 4px;
+  pointer-events: auto;
+  cursor: help;
+}
+
 .timeline__clip-edge {
   position: absolute;
   top: 0;

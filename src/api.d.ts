@@ -26,7 +26,7 @@ import type { ShotStatus } from '../electron/shotStatus'
 import type { PromptLabKind } from '../electron/promptLabTypes'
 import type { AddClipInput, ClipUpdates } from '../electron/editorManager'
 import type { ExportProgress } from '../electron/videoExportManager'
-import type { LibraryLocation } from '../electron/libraryRelocationManager'
+import type { LibraryLocation, RelocateLibraryResult } from '../electron/libraryRelocationManager'
 import type {
   Clip,
   ClipKind,
@@ -73,6 +73,7 @@ export type {
   ClipUpdates,
   ExportProgress,
   LibraryLocation,
+  RelocateLibraryResult,
   Clip,
   ClipKind,
   ChromaKey,
@@ -247,7 +248,7 @@ declare global {
       onExportProgress(callback: (progress: ExportProgress) => void): () => void
 
       getLibraryLocation(): Promise<LibraryLocation>
-      relocateLibrary(): Promise<LibraryLocation | null>
+      relocateLibrary(): Promise<RelocateLibraryResult | null>
     }
   }
 }

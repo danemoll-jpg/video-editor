@@ -41,7 +41,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { ProjectManager, Asset } from './projectManager'
 import type { EditorManager } from './editorManager'
-import { probeMedia } from './mediaProbe'
+import { probeMedia, probeMediaDiagnostics } from './mediaProbe'
 import { ffmpegBinaryPath } from './videoRuntime'
 import { requireProjectDir } from './projectPaths'
 import type { Clip, Timeline, Track } from './editorTypes'
@@ -354,11 +354,112 @@ export class VideoExportManager {
       outputPath,
     ]
 
+    await this.writeExportDiagnostics(dir, {
+      projectId,
+      outputPath,
+      timeline,
+      resolvedByClipId,
+      filterComplex,
+      args,
+    })
+
     onProgress({ stage: 'encoding', percent: 0 })
     await this.runFfmpeg(args, totalDuration, onProgress)
     onProgress({ stage: 'done', percent: 100 })
 
     return { outputPath }
+  }
+
+  /**
+   * TEMPORARY diagnostic logging for the chroma-key-on-export bug (TODO.md —
+   * still not reproducible against last round's synthetic test footage).
+   * Written unconditionally on every export attempt, success or failure,
+   * since the reported symptom is a *wrong-looking* export, not an FFmpeg
+   * error — a try/catch around just the failure path would miss exactly the
+   * run that matters. Remove once that bug is actually closed out; this
+   * isn't meant to be permanent instrumentation.
+   *
+   * Written to a fixed filename in the project's own `exports/` folder
+   * (never the custom per-export destination from item 6 — this file needs
+   * to be somewhere predictable regardless of where the MP4 itself lands),
+   * overwriting the previous attempt's log each time, plus mirrored to the
+   * console for whenever the app happens to be run from a visible terminal
+   * (`npm run dev`/`npm start`) rather than the hidden-console launcher.
+   */
+  private async writeExportDiagnostics(
+    projectDir: string,
+    info: {
+      projectId: string
+      outputPath: string
+      timeline: Timeline
+      resolvedByClipId: Map<string, ResolvedInput>
+      filterComplex: string
+      args: string[]
+    },
+  ): Promise<void> {
+    const lines: string[] = []
+    const push = (s: string) => lines.push(s)
+
+    push(`=== Export diagnostics — ${new Date().toISOString()} ===`)
+    push(`Project: ${info.projectId}`)
+    push(`Output: ${info.outputPath}`)
+    const { width, height, fps, backgroundColor } = info.timeline.projectSettings
+    push(`Canvas: ${width}x${height} @ ${fps}fps, background ${backgroundColor}`)
+    push('')
+
+    push('--- Source clips involved (per-clip settings + FFprobe of the underlying file) ---')
+    for (const clip of info.timeline.clips) {
+      const track = info.timeline.tracks.find((t) => t.id === clip.trackId)
+      const resolved = info.resolvedByClipId.get(clip.id)
+      push(
+        `Clip ${clip.id} on track "${track?.name ?? clip.trackId}" (${track?.type ?? '?'}), ` +
+          `startTime=${clip.startTime.toFixed(3)} duration=${clip.duration.toFixed(3)} ` +
+          `transitionOut=${clip.transitionOut.type}${clip.transitionOut.type !== 'none' ? `(${clip.transitionOut.duration}s)` : ''}`,
+      )
+      if (clip.kind === 'media') {
+        push(
+          `  chromaKey: enabled=${clip.chromaKey.enabled}` +
+            (clip.chromaKey.enabled
+              ? ` color=${clip.chromaKey.color} similarity=${clip.chromaKey.similarity} blend=${clip.chromaKey.blend}`
+              : ''),
+        )
+        push(`  crop=${clip.crop ? JSON.stringify(clip.crop) : 'none'} transform=${JSON.stringify(clip.transform)}`)
+        push(`  speed=${clip.speed} reverse=${clip.reverse} mirror=${clip.mirror} inPoint=${clip.inPoint} outPoint=${clip.outPoint}`)
+        if (resolved) {
+          push(`  file: ${resolved.absPath}`)
+          try {
+            const diag = await probeMediaDiagnostics(resolved.absPath)
+            push(
+              `  ffprobe: ${diag.width}x${diag.height} videoCodec=${diag.videoCodec} pixFmt=${diag.pixFmt} ` +
+                `audioCodec=${diag.audioCodec} durationSec=${diag.durationSec.toFixed(3)}`,
+            )
+          } catch (err) {
+            push(`  ffprobe: FAILED — ${(err as Error).message}`)
+          }
+        } else {
+          push(`  file: (no resolved input — asset missing or clip has no assetId)`)
+        }
+      } else {
+        push(`  text clip: "${clip.text?.content ?? ''}"`)
+      }
+    }
+
+    push('')
+    push('--- Generated filter_complex ---')
+    push(info.filterComplex)
+    push('')
+    push('--- Full FFmpeg args ---')
+    push(JSON.stringify(info.args, null, 2))
+    push('')
+
+    const text = lines.join('\n')
+    console.log(text)
+    try {
+      await fs.mkdir(path.join(projectDir, 'exports'), { recursive: true })
+      await fs.writeFile(path.join(projectDir, 'exports', 'export-diagnostics.log'), text, 'utf-8')
+    } catch (err) {
+      console.error('[videoExportManager] could not write export-diagnostics.log:', err)
+    }
   }
 
   private buildVisualChain(clip: Clip, resolved: ResolvedInput, label: string, canvasW: number, canvasH: number): string {

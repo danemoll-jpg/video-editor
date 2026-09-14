@@ -181,6 +181,20 @@ properties (`Clip.reverse`/`mirror`, both with real FFmpeg export support —
 reverse has no live-preview equivalent, a documented simplification since
 browsers can't play `<video>` backwards); and playhead drag-precision via
 scrub-to-seek plus a live time-readout tooltip while dragging the playhead
-or a trim handle. See TODO.md's Current Objective and Completed Tasks for
-the full per-item record, including the one item (chroma key) still not
-confirmed fixed and what to capture if it resurfaces.
+or a trim handle. **A further round on 2026-09-13** addressed Dan's own
+first click-through findings on those nine items: a real, serious library-
+relocation bug (found and fixed by direct disk inspection — a bulk
+whole-library delete could partially destroy real project data when it hit
+one locked file elsewhere; `libraryRelocationManager.ts` is rewritten to
+move/verify one project at a time with a clean rollback on any failure, and
+Dan's actual project list — down to just his two real projects, "sfh" and
+"teafa," after clearing out a pile of old test-residue folders — has been
+recovered and repointed at the intact copy); temporary diagnostic logging
+for the still-unresolved chroma-key-on-export bug (`videoExportManager.ts`/
+`mediaProbe.ts` now log the full `filter_complex` and every source clip's
+FFprobe'd codec/pixel-format/resolution on every export, waiting on Dan's
+real repro to produce a log to act on); and a small visible timeline badge
+for the Reverse/Mirror clip properties, so a checked setting is confirmed
+without needing to export first. See TODO.md's Current Objective and
+Completed Tasks for the full per-item record, including the one item
+(chroma key) still not confirmed fixed.

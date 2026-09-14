@@ -24,7 +24,7 @@ import type { PromptLabKind } from './promptLabTypes'
 import type { AddClipInput, ClipUpdates } from './editorManager'
 import type { ExportProgress } from './videoExportManager'
 import type { ProjectSettings, Timeline, TrackType } from './editorTypes'
-import type { LibraryLocation } from './libraryRelocationManager'
+import type { LibraryLocation, RelocateLibraryResult } from './libraryRelocationManager'
 
 const api = {
   listProjects: (): Promise<ProjectSummary[]> => ipcRenderer.invoke('projects:list'),
@@ -222,7 +222,7 @@ const api = {
   },
 
   getLibraryLocation: (): Promise<LibraryLocation> => ipcRenderer.invoke('library:getLocation'),
-  relocateLibrary: (): Promise<LibraryLocation | null> => ipcRenderer.invoke('library:relocate'),
+  relocateLibrary: (): Promise<RelocateLibraryResult | null> => ipcRenderer.invoke('library:relocate'),
 }
 
 export type DanVideoStudioApi = typeof api

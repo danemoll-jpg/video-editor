@@ -977,6 +977,126 @@ withdrawn — see Current Objective below, no code change there.)
     mirror preview simplification (reverse doesn't preview backwards) is
     documented above, not a defect.
 
+**Phase 6 continued — Dan's first-pass findings, addressed (2026-09-13).**
+Reporting each of the three separately, as asked:
+
+1. **Library relocation (item 5) — real data recovered, real root cause
+   found and fixed by actual disk inspection, not guesswork.** What actually
+   happened, confirmed by inspecting Dan's real machine directly (not
+   speculation): the old `relocateLibrary` moved the *entire* library in one
+   shot (one whole-tree `fs.rename`, falling back on failure to one
+   whole-tree `copyRecursive` + one whole-tree `fs.rm(recursive, force)`).
+   When that `fs.rm` hit a locked file inside the stray `dev-mode-test-...`
+   project's `promptlab` folder and threw, Node's recursive delete had
+   already unlinked files belonging to *other, unrelated, real* projects
+   before the throw surfaced — every single file in every project folder at
+   the default location was gone (confirmed: 0 files anywhere under
+   `Documents/Dan's Video Studio/Projects`, just empty directory shells),
+   even though the persisted location preference itself was never written
+   (it correctly never got that far) — so the app kept pointing at the
+   now‑hollowed‑out default location, which is why the project list broke.
+   **The real data wasn't lost, though:** a fully intact copy had already
+   been written moments earlier by `copyRecursive`, *before* the destructive
+   delete ran, sitting safely at the folder Dan picked as the move's
+   destination (`C:\Users\danmo\DansVideoEditor\Dan's Video Studio`) —
+   including his two real projects, "sfh" and "teafa" (which even had a real
+   exported MP4, `teafa-export.mp4`, still in its `exports/` folder). Fixed,
+   with Dan's confirmation before touching anything:
+   - The app's library-location preference now points at that intact
+     `DansVideoEditor` copy.
+   - "teafa"'s `project.json`/`assets.json` (also caught by the same
+     deletion, since the bug wasn't selective) were reconstructed directly
+     from what's actually still on disk there — same ids the timeline/SFX
+     data already reference (verified: every `assetId` in `teafa`'s
+     `editor/timeline.json` matches an entry in the rebuilt `assets.json`),
+     so nothing is guessed, just re-indexed. "sfh"'s metadata had survived
+     intact and needed no repair.
+   - The 7 folders matching this app's own documented Playwright-test-
+     residue naming pattern (`dev-mode-test-*`, `field-test-*`,
+     `input-bug-test-*`, `submit-test-*`, `verification-pass-*`) plus 2
+     small empty, unlabeled folders ("efdfdf", "sgsgd") were deleted from
+     both the old default location and the `DansVideoEditor` copy, with
+     Dan's explicit go-ahead. Dan's real project list is now exactly "sfh"
+     and "teafa" — nothing else.
+   - **Root cause fixed in `electron/libraryRelocationManager.ts`,
+     rewritten:** relocation is no longer one all-or-nothing bulk operation.
+     Every project now moves individually (`fs.rename` per project, falling
+     back to copy *for that one project only* on cross-device failure,
+     verified by comparing file count/total bytes before/after). The
+     persisted location preference switches **only** once every single
+     project has been verified fully present at the new location — never
+     before, and never partially. Any failure anywhere in that phase
+     triggers a full rollback (renaming back what was moved via rename,
+     deleting the destination's partial copy for anything done via copy)
+     that restores the old location to exactly what it was, leaving the
+     preference untouched — a problem with one project (however it's
+     caused) can now never again put any other project's data at risk.
+     Verified against a synthetic fixture (never touching real data, per
+     this file's own standing safety lesson on testing this exact feature):
+     simulating the *exact* original failure (an `EPERM` partway through a
+     copy-fallback) confirmed the whole operation throws cleanly, both real
+     projects' files stay completely untouched at the old location, the new
+     location's partial copy is fully cleaned up, and the preference never
+     moves; removing the simulated bad project and retrying then confirmed a
+     full, verified, successful move with the preference correctly
+     switching only at the end. Cleanup of old per-project folders after a
+     successful cross-device move is now best-effort and non-fatal per
+     project (surfaced to Settings as a `cleanupWarnings` list on the
+     result) rather than one failure aborting/corrupting the whole
+     operation.
+2. **Chroma key on export (item 3) — temporary diagnostic logging added,
+   not yet root-caused.** Per this project's own habit — get real data
+   before guessing again — `electron/videoExportManager.ts` now writes a
+   diagnostics log on **every** export attempt (success or failure, since
+   the symptom is a wrong-looking result, not an FFmpeg error) to a fixed
+   `exports/export-diagnostics.log` inside the project's own folder
+   (regardless of a custom per-export destination), and mirrors it to the
+   console for whenever the app's run from a visible terminal. It captures,
+   per clip involved: track type, chroma-key color/similarity/blend,
+   crop/transform, speed/reverse/mirror/trim, transition info, and (via a
+   new `probeMediaDiagnostics` in `electron/mediaProbe.ts`) the underlying
+   file's real FFprobe'd resolution, video codec, pixel format, and audio
+   codec — plus the complete generated `filter_complex` string and the full
+   FFmpeg argument list. Explicitly marked temporary/removable once the bug
+   is actually closed out, not permanent instrumentation. **Next step:**
+   Dan reproduces the failure on his real project (his real "teafa" project,
+   now restored, may well be the exact one — worth trying first); the
+   resulting `export-diagnostics.log` is what actually points at the fix
+   from here, rather than another synthetic guess.
+3. **Reverse/mirror timeline badge (small follow-up) — built.** A clip on
+   the timeline now shows a small ⏪ badge when Reverse is on and a ⇋ badge
+   when Mirror is on (`Timeline.tsx`), each with a tooltip — Reverse's
+   explicitly notes that live preview still plays forward, since that's a
+   documented limitation (browsers can't play HTML5 `<video>` backwards),
+   not a bug the badge is hiding. Closes the "does nothing" confusion from
+   Dan's first pass; exporting a reversed clip to confirm real reversal in
+   the output file (which Dan hadn't yet done) is still worth doing, now
+   that the setting is visibly confirmable in the editor itself.
+
+  **Verification status:**
+  - Confirmed working on this machine: `npm run typecheck` and
+    `npm run build` both succeed (renderer + main process).
+  - Item 1's rewritten relocation logic was verified against a synthetic
+    fixture built entirely under the scratchpad (see above) — both the
+    failure/rollback path and the full-success path were exercised and
+    matched expectations exactly. It was **not** re-run against a live
+    "Move Library" click in the real UI this round (Dan's actual project
+    data was still being recovered/repaired at the same time as the code
+    fix, and this project's own safety lesson from last round is explicit
+    about not testing this feature against real data) — worth Dan doing
+    one real, low-stakes "Move Library" click himself now that his library
+    is back to just "sfh"/"teafa," to confirm the fix in the live app, not
+    just against the synthetic fixture.
+  - Item 2's diagnostic logging was added but deliberately **not**
+    exercised against Dan's real repro this round (that needs his real
+    project and his real reproduction steps) — it's confirmed to compile
+    and to wire in correctly, not confirmed to actually surface the bug yet.
+  - Item 3's badge was added but not yet clicked through in the live app by
+    either Dan or a scripted UI pass this round.
+  - **Not yet confirmed: Dan's own manual click-through of all three of
+    these** — same pattern as every prior round. Phase 6 stays the current
+    objective.
+
 Current Objective (Focus Area)
 
 **Phase 3 is now considered complete.** The SFX/ElevenLabs typing bug
@@ -1046,7 +1166,8 @@ results, reported per item:**
   checked, so the setting is confirmed without needing to export first.
   Dan hasn't yet tried actually exporting that clip to confirm real
   reversal in the output file — worth doing once the badge is in, so both
-  get confirmed together.
+  get confirmed together. **RESOLVED (2026-09-13): badge built** — see
+  "Phase 6 continued — Dan's first-pass findings, addressed" above.
 - **Item 3 (chroma key on export): still broken, exact same symptom as
   before** (mostly black screen) — confirmed by Dan on his real project,
   the same case last round's synthetic tests couldn't reproduce despite
@@ -1059,7 +1180,10 @@ results, reported per item:**
   format/resolution for every source clip involved in that specific
   export) so that when Dan reproduces the failure on his real project, the
   log output itself — not another synthetic guess — points at what's
-  actually different about his case.
+  actually different about his case. **IN PROGRESS (2026-09-13): logging
+  built, bug not yet root-caused** — see "Phase 6 continued — Dan's
+  first-pass findings, addressed" above; still needs Dan's real repro to
+  produce an actual log to act on.
 - **Item 5 (library relocation): a real, serious bug — surfaced mid-move
   and needs to be the priority fix.** Dan's "Move Library" attempt threw
   `EPERM: operation not permitted, rmdir` on a `promptlab` folder inside a
@@ -1081,6 +1205,22 @@ results, reported per item:**
   looking for Dan's real projects in the wrong place even though they
   never left the original location. **Do not attempt "Move Library"
   again until this is fixed.**
+
+  **RESOLVED (2026-09-13) — root cause found by actual disk inspection, not
+  the hypothesis above.** The persisted preference was in fact never
+  switched (that part of the original hypothesis was backwards) — the real
+  problem was that the bulk `fs.rm(recursive, force)` fallback, on hitting
+  the one locked file, had already destroyed files belonging to other, real
+  projects before the throw surfaced, at the location the app correctly
+  kept pointing at. Also correcting this file's earlier claim that "his
+  real project files are still physically present at the original default
+  location" — direct inspection found the opposite: that location was left
+  with 0 files anywhere, just empty directory shells; the real data's
+  survival was thanks to the full copy `copyRecursive` had already written
+  to the move's *destination* moments before the delete ran, not anything
+  intact at the original spot. See "Phase 6 continued — Dan's first-pass
+  findings, addressed" above for the full recovery and the actual code
+  fix — both done.
 
 **Two more gaps identified (2026-09-13), added to Phase 6's scope before
 Phase 7 starts** — not originally specified anywhere, genuinely overlooked,
@@ -1258,6 +1398,11 @@ Technical Notes / Blockers
   installed `ffmpeg-static` binary's exact reported version too (`ffmpeg
   -version` via the app's bundled copy) in case it differs from the
   6.1.1-essentials_build used for prior testing.
+  **UPDATE (2026-09-13): the diagnostic logging described above is now
+  built** (`videoExportManager.ts`/`mediaProbe.ts` — see "Phase 6
+  continued — Dan's first-pass findings, addressed" in Completed Tasks) —
+  still waiting on Dan's real reproduction to actually produce a log to act
+  on; this note's "next step" is now literally the next step, not a plan.
 - **NEW, urgent (2026-09-13): library relocation (item 5) has a real bug
   that left Dan's real project list broken in the UI, though his files are
   confirmed physically safe.** See Current Objective above for the full
@@ -1282,6 +1427,31 @@ Technical Notes / Blockers
   with Dan it isn't his); (4) audit for other stray test-residue projects
   from past rounds. Dan should not attempt "Move Library" again until this
   is fixed.
+  **RESOLVED (2026-09-13):** all four priorities above are done — see
+  "Phase 6 continued — Dan's first-pass findings, addressed" in Completed
+  Tasks for the full writeup. Correcting two things this note got wrong,
+  found only by actually inspecting the real disk rather than reasoning
+  about it: (1) the persisted preference was *never* actually switched —
+  that leading hypothesis was backwards; the real damage was to the *data*
+  at the location the app correctly kept pointing at, not to the pointer
+  itself. (2) His real files were **not** still at the original default
+  location by the time this was investigated — that location had 0 files
+  anywhere left in it. What actually saved his data was an intact copy
+  `copyRecursive` had already written to the move's destination
+  (`C:\Users\danmo\DansVideoEditor\Dan's Video Studio`) moments before the
+  destructive delete ran there. The app now points at that copy. 9 stray/
+  residue project folders (7 matching this file's own documented
+  Playwright-test naming pattern, 2 small empty unlabeled ones) were
+  deleted from both locations with Dan's explicit go-ahead — his real
+  project list is now exactly "sfh" and "teafa". Root cause fixed: every
+  project now moves individually with per-project verification, and the
+  preference switches only once *every* project is confirmed fully moved,
+  with a clean rollback (restoring the old location exactly) on any
+  failure — verified against a synthetic fixture reproducing the original
+  failure mode exactly (see Completed Tasks). Dan can try "Move Library"
+  again whenever he wants; a real click-through of the fixed version in the
+  live app (as opposed to the synthetic-fixture verification this round
+  used) is still worth doing once he has a moment.
 - **Safety lesson from testing item 5 (library relocation) — worth keeping
   on record.** An early draft of this round's relocation test ran
   `relocateLibrary` directly against the real default library location to
@@ -1324,6 +1494,11 @@ Technical Notes / Blockers
   outside the repo was refused), so they're still sitting there — harmless
   test data, safe to delete via the app's own "Delete Project" (trash) or
   directly, whenever it's convenient.
+  **RESOLVED (2026-09-13):** these (plus more of the same pattern from a
+  later round) turned out to be exactly what got tangled up in the library-
+  relocation incident — deleted for good this time, with Dan's explicit
+  go-ahead, as part of that fix. See "Phase 6 continued — Dan's first-pass
+  findings, addressed" in Completed Tasks.
 - **Correction, now actually applied (2026-09-12).** This file previously
   claimed the app was renamed "Dan Video Studio" → "Dan's Video Studio,"
   including the on-disk folder path, and verified via a live window title —

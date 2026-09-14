@@ -282,6 +282,16 @@ export default function Timeline({
                               onMouseDown={(e) => startDragTrim(e, clip, 'start')}
                             />
                             <span className="timeline__clip-label">{assetLabel(clip)}</span>
+                            {clip.kind === 'media' && clip.reverse && (
+                              <span className="timeline__clip-badge" title="Reverse is on — exports reversed; live preview still plays forward (browsers can't play video backwards)">
+                                ⏪
+                              </span>
+                            )}
+                            {clip.kind === 'media' && clip.mirror && (
+                              <span className="timeline__clip-badge" title="Mirror is on (flipped horizontally)">
+                                ⇋
+                              </span>
+                            )}
                             {clip.transitionOut.type !== 'none' && <span className="timeline__clip-transition">⇥</span>}
                             <div
                               className="timeline__clip-edge timeline__clip-edge--end"

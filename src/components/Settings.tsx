@@ -58,7 +58,13 @@ export default function Settings() {
       const result = await window.api.relocateLibrary()
       if (result) {
         setLibrary(result)
-        setMessage(`Library moved to ${result.baseDir}.`)
+        setMessage(
+          result.cleanupWarnings.length === 0
+            ? `Library moved to ${result.baseDir}.`
+            : `Library moved to ${result.baseDir}. Everything is safely there, but the old copy of ` +
+                `${result.cleanupWarnings.join(', ')} couldn't be deleted from the old location (e.g. a locked ` +
+                `file) — harmless leftover clutter, safe to delete by hand whenever convenient.`,
+        )
       }
     } catch (err) {
       setLibraryError(err instanceof Error ? err.message : String(err))
