@@ -326,6 +326,12 @@ ipcMain.handle('ai:list', (_e, projectId: string, context: AiAssistantContext) =
 ipcMain.handle('ai:send', (_e, projectId: string, context: AiAssistantContext, text: string) =>
   aiAssistantManager.sendMessage(projectId, context, text),
 )
+ipcMain.handle('ai:getDraft', (_e, projectId: string, context: AiAssistantContext) =>
+  aiAssistantManager.getDraft(projectId, context),
+)
+ipcMain.handle('ai:saveDraft', (_e, projectId: string, context: AiAssistantContext, text: string) =>
+  aiAssistantManager.saveDraft(projectId, context, text),
+)
 
 // --- IPC: Media Library (Phase 5) -------------------------------------------
 

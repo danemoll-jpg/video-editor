@@ -1213,6 +1213,77 @@ saved, and never realized he needed to.
   and/or chat with the AI Assistant, switch tabs without manually saving,
   switch back, confirm nothing is lost.
 
+  **RESOLVED (2026-09-14), built and verified.** Root cause, actually
+  investigated rather than guessed — and it turned out to be a single
+  mechanism hitting two places, not two unrelated bugs:
+  - **The already-*sent* side of the AI Assistant conversation was never
+    actually broken.** `aiAssistantManager.sendMessage` (main process) has
+    always written both the user's message and the assistant's reply to
+    `aiAssistant/<context>.json` immediately, before returning to the
+    renderer — genuinely no manual-save step, and that write happens in the
+    main process independent of whatever the renderer/React tree is doing,
+    so it isn't affected by a tab switch. Confirmed by code inspection and
+    by this round's own verification (seeded a fake sent exchange on disk
+    and confirmed it survives switching tabs, below).
+  - **The real cause, for both symptoms Dan reported:** `ProjectView.tsx`
+    renders each tab's content conditionally (`{tab === 'idea' && <IdeaEditor
+    .../>}`), so switching tabs fully *unmounts* the previous tab's
+    component tree — destroying whatever was only sitting in that
+    component's local React state. For Idea/Script notes, that's the
+    typed-but-unsaved textarea content (`IdeaEditor.tsx`/`ScriptEditor.tsx`'s
+    own `draft` state) — exactly the explicit-Save-button design working
+    exactly as specced, which was the actual problem. For the AI Assistant,
+    the equivalent local state is `AiAssistantPanel.tsx`'s composer
+    `draft` — the message-in-progress the user hadn't clicked Send on yet.
+    That's almost certainly the "genuinely good idea" Dan lost: not a
+    previously-sent-and-answered exchange (which was always safe on disk),
+    but a message he was composing when he switched tabs, which had never
+    been sent yet and so had nothing durable behind it at all.
+  - **What was built:** new `src/useAutosave.ts` — a small shared hook used
+    by `IdeaEditor.tsx`, `ScriptEditor.tsx`, and `AiAssistantPanel.tsx`.
+    It debounce-saves ~1.2s after typing pauses (the "save shortly after
+    typing pauses" ask), but the debounce alone doesn't fix Dan's exact
+    repro (type, then switch tabs *immediately* — well under 1.2s): its
+    second effect flushes the latest value immediately on unmount if a save
+    was still pending, which is exactly when a tab switch happens. The
+    flush calls straight into the same `window.api.saveIdea`/`saveScript`/
+    (new) `saveAiDraft` IPC calls, which keep running in the main process
+    and write to disk regardless of whether the renderer component that
+    triggered them is still around by the time they finish — the same
+    already-solid mechanism the sent-message path relied on. The explicit
+    Save button and Ctrl+S still work on Idea/Script (now redundant, not
+    load-bearing); the toolbar text now reads "Unsaved changes — saving
+    automatically…" while a save is pending. For the AI Assistant, the
+    composer's draft is persisted to a new sibling file per context
+    (`aiAssistant/<context>.draft.json` in `aiAssistantManager.ts` — kept
+    separate from the existing `AiMessage[]` conversation file so that
+    format didn't need to change), loaded back in when the panel is
+    re-expanded, and cleared immediately once the draft is actually sent.
+  - **Verification status:** `npm run typecheck` and `npm run build` both
+    succeed. Reproduced Dan's exact scenario via a scripted Playwright pass
+    against the real, built Electron app (same technique as every prior
+    phase's UI verification — run in a throwaway, isolated `--user-data-dir`
+    this time specifically so a test run can never collide with or risk
+    Dan's real, possibly-already-open app profile/library, after this
+    round's own dry runs were first caught landing in the wrong
+    place by exactly that kind of collision): typed into Idea notes, switched
+    to the Script tab within ~150ms (no wait for the debounce), switched
+    back — text intact; confirmed it actually reached disk (not just
+    still-live memory) by fully reloading the app and re-opening the
+    project. Repeated for Script notes. Typed an unsent message into the
+    Idea tab's AI Assistant composer, switched tabs within ~150ms, switched
+    back, re-expanded the panel — the draft text was restored; confirmed
+    that also reached disk via a full reload. Separately seeded a fake
+    *sent* exchange directly into a test project's `aiAssistant/idea.json`
+    (avoiding a real paid Anthropic call, same technique as Phase 3/4/5's
+    verification) and confirmed it still displays correctly after switching
+    tabs away and back — the sent-message path, unaffected by any of this
+    round's changes. All assertions passed; the throwaway test project was
+    deleted (trashed) afterward. **Not yet done: Dan's own hands-on
+    confirmation** that the fix holds up in his actual daily use — this
+    was Claude-driven Playwright automation, same caveat as every other
+    phase's UI verification in this file.
+
 **Phase 3 is now considered complete.** The SFX/ElevenLabs typing bug
 (investigated above) turned out to be intermittent, not a real defect —
 confirmed by Dan that it now works fine even via the exact repro steps that
@@ -1960,6 +2031,22 @@ Technical Notes / Blockers
   relocation incident — deleted for good this time, with Dan's explicit
   go-ahead, as part of that fix. See "Phase 6 continued — Dan's first-pass
   findings, addressed" in Completed Tasks.
+- **NEW, flagged not fixed (2026-09-14): a stale duplicate "teafa" project
+  folder at the OLD (pre-relocation) default library location.** Noticed
+  while cleaning up this round's own autosave-fix verification's throwaway
+  test project (which this round deliberately ran against an isolated,
+  throwaway `--user-data-dir`, specifically to avoid any risk of colliding
+  with Dan's real, possibly-already-open app/library — see the URGENT
+  item's verification write-up above) — a `teafa-3382c3aa` folder still
+  exists under `Documents/Dan's Video Studio/Projects/` (the pre-relocation
+  default location) even though Dan's library was relocated to
+  `DansVideoEditor\Dan's Video Studio` and that same `teafa-3382c3aa`
+  project exists there too. Likely leftover from `libraryRelocationManager
+  .ts`'s cross-drive copy-then-delete-original fallback not fully cleaning
+  up the source after copying. **Not touched or investigated further this
+  round** — this is Dan's real project data and determining which copy (if
+  either has diverged) is authoritative needs real care, not a guess; a
+  separate task was flagged for it rather than deleting anything here.
 - **Correction, now actually applied (2026-09-12).** This file previously
   claimed the app was renamed "Dan Video Studio" → "Dan's Video Studio,"
   including the on-disk folder path, and verified via a live window title —

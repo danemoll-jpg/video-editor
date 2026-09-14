@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AiAssistantContext, AiMessage } from '../api'
+import { useAutosave } from '../useAutosave'
 
 interface Props {
   projectId: string
@@ -21,6 +22,14 @@ interface Props {
  * script, other prompts, etc.) — only what's typed here is sent to
  * Anthropic. `onInsert` is how a reply gets into the current tab's field;
  * this component has no idea what that field is.
+ *
+ * Every *sent* message was always persisted immediately by
+ * `aiAssistantManager.sendMessage` (main process), with no manual-save step
+ * — that part was never the bug. As of 2026-09-14, the composer's
+ * in-progress, not-yet-sent `draft` is now also debounced-autosaved (see
+ * `useAutosave`), since that draft living only in this component's React
+ * state — silently destroyed the instant this panel unmounts, e.g. by
+ * switching tabs — was the real cause behind "lost a whole conversation."
  */
 export default function AiAssistantPanel({ projectId, context, label, onInsert }: Props) {
   const [expanded, setExpanded] = useState(false)
@@ -44,16 +53,30 @@ export default function AiAssistantPanel({ projectId, context, label, onInsert }
   useEffect(() => {
     if (!expanded || loaded) return
     setLoading(true)
-    window.api
-      .listAiMessages(projectId, context)
-      .then((m) => {
+    Promise.all([window.api.listAiMessages(projectId, context), window.api.getAiDraft(projectId, context)])
+      .then(([m, savedDraft]) => {
         setMessages(m)
+        // Functional update: if the user somehow already typed something in
+        // the brief window before this load resolved, don't clobber it.
+        setDraft((current) => (current ? current : savedDraft))
         setLoaded(true)
         setError(null)
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false))
   }, [expanded, loaded, projectId, context])
+
+  // Debounced-automatic draft save, flushed immediately if this panel is
+  // unmounted (its tab switched away from) before the debounce fires — see
+  // useAutosave.ts's header. Gated on `loaded` so this can't fire (and wipe
+  // out a previously-saved draft with an empty string) before the persisted
+  // draft above has actually been read back into `draft`.
+  useAutosave(draft, loaded, (value) => {
+    window.api.saveAiDraft(projectId, context, value).catch(() => {
+      // Best-effort — a failed draft save isn't worth surfacing as an error
+      // banner; the composer text itself is still right there on screen.
+    })
+  })
 
   useEffect(() => {
     if (expanded) listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
@@ -66,6 +89,10 @@ export default function AiAssistantPanel({ projectId, context, label, onInsert }
     try {
       setMessages(await window.api.sendAiMessage(projectId, context, text))
       setDraft('')
+      // Clear the persisted draft right away rather than waiting for the
+      // autosave debounce to notice `draft` went back to '' — the message
+      // it held has now actually been sent (and persisted) for real.
+      window.api.saveAiDraft(projectId, context, '').catch(() => {})
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

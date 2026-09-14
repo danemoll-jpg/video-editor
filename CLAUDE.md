@@ -137,15 +137,30 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
-**URGENT, PRIORITY (2026-09-14): a real data-loss bug is next, now that
-the chroma-key preview-accuracy fix below is done.** Dan lost an AI
-Assistant conversation and typed Idea notes together by switching tabs
-without saving, on real project work. Two fixes needed: (1) AI Assistant
-conversation history must persist automatically per message, no manual
-save — it was specced this way in Phase 4 but isn't holding up in
-practice, so this is a regression; (2) Idea and Script notes need real
-debounced autosave, not just the current explicit Save button. See
-TODO.md's Current Objective for full detail.
+**URGENT, PRIORITY data-loss bug — RESOLVED (2026-09-14), built and
+verified.** Dan lost an AI Assistant conversation and typed Idea notes
+together by switching tabs without saving, on real project work. Root
+cause: the already-*sent* side of the AI Assistant conversation was never
+actually broken (`aiAssistantManager.sendMessage` always wrote both
+messages to disk immediately, no manual save, independent of the
+renderer) — the real problem was local React state (Idea/Script's
+unsaved textarea `draft`, and the AI Assistant composer's own unsent
+`draft`) getting destroyed the instant its tab unmounts, since
+`ProjectView.tsx` conditionally renders each tab. New `src/useAutosave.ts`
+(shared by `IdeaEditor.tsx`, `ScriptEditor.tsx`, and
+`AiAssistantPanel.tsx`) debounce-saves ~1.2s after typing pauses and, more
+importantly, flushes the latest value immediately on unmount (i.e. the
+moment a tab switch happens) via the same main-process IPC writes that
+already worked correctly for sent messages. The AI Assistant's
+not-yet-sent composer draft is now persisted too, in a new sibling
+`aiAssistant/<context>.draft.json` file per context. Verified by
+reproducing Dan's exact scenario via scripted Playwright against the real
+built app (isolated `--user-data-dir`, so the test can't collide with
+Dan's real, possibly-open app/library): type, switch tabs within ~150ms
+(no waiting for the debounce), switch back, text/draft intact and
+confirmed to have hit disk via a full app reload. See TODO.md's Current
+Objective for the full root-cause and verification writeup. **Not yet
+done: Dan's own hands-on confirmation.**
 
 This is **Dan's Video Studio** — a personal desktop app covering the full
 creative process (idea → script → scenes → shots → AI prompts → generated

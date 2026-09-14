@@ -175,6 +175,10 @@ const api = {
     ipcRenderer.invoke('ai:list', projectId, context),
   sendAiMessage: (projectId: string, context: AiAssistantContext, text: string): Promise<AiMessage[]> =>
     ipcRenderer.invoke('ai:send', projectId, context, text),
+  getAiDraft: (projectId: string, context: AiAssistantContext): Promise<string> =>
+    ipcRenderer.invoke('ai:getDraft', projectId, context),
+  saveAiDraft: (projectId: string, context: AiAssistantContext, text: string): Promise<void> =>
+    ipcRenderer.invoke('ai:saveDraft', projectId, context, text),
 
   getMediaLibrary: (projectId: string): Promise<MediaLibraryEntry[]> =>
     ipcRenderer.invoke('media:getLibrary', projectId),

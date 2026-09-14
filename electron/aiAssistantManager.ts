@@ -18,6 +18,11 @@ import type { PromptLabKind } from './promptLabTypes'
 //     script.json      elevenlabs.json
 //     grok.json
 //
+// Each context also gets a `<context>.draft.json` sibling file (added
+// 2026-09-14) holding the composer's in-progress, not-yet-sent text — see
+// `draftPath`'s comment below for why that exists as its own file rather
+// than a field on the conversation array.
+//
 // 'elevenlabs' stays its own context even though the Phase 5 SFX merge
 // folded the old ElevenLabs prompt-lab *kind* into the unified SFX system
 // (electron/sfxLibraryManager.ts) — the AI Assistant that helps write an
@@ -74,6 +79,23 @@ function conversationPath(dir: string, context: AiAssistantContext): string {
   return path.join(dir, 'aiAssistant', `${context}.json`)
 }
 
+/**
+ * The composer's in-progress, not-yet-sent draft — a sibling file to the
+ * conversation itself so the existing `AiMessage[]` shape on disk doesn't
+ * need to change. See "URGENT, PRIORITY (2026-09-14)" in TODO.md: an
+ * already-*sent* message was always persisted immediately (this file's
+ * `sendMessage` writes before returning, with no manual-save step), but a
+ * message the user was still typing lived only in the renderer's React
+ * state — switching tabs unmounts the panel and silently discards it. This
+ * is the real root cause behind the "lost a whole conversation" report; the
+ * fix is persisting the draft the same debounced-autosave way as Idea/
+ * Script notes (see `src/useAutosave.ts`), not touching the already-solid
+ * sent-message path.
+ */
+function draftPath(dir: string, context: AiAssistantContext): string {
+  return path.join(dir, 'aiAssistant', `${context}.draft.json`)
+}
+
 /** Turns a thrown error from the Anthropic SDK (or elsewhere) into a message safe to show the user. */
 function describeError(err: unknown): string {
   if (err instanceof Anthropic.AuthenticationError) {
@@ -98,6 +120,24 @@ export class AiAssistantManager {
   async listMessages(projectId: string, context: AiAssistantContext): Promise<AiMessage[]> {
     const dir = await requireProjectDir(projectId)
     return readJsonFile<AiMessage[]>(conversationPath(dir, context), [])
+  }
+
+  /** The composer's persisted draft, if any — see `draftPath`'s comment above. */
+  async getDraft(projectId: string, context: AiAssistantContext): Promise<string> {
+    const dir = await requireProjectDir(projectId)
+    const data = await readJsonFile<{ text: string }>(draftPath(dir, context), { text: '' })
+    return data.text
+  }
+
+  /**
+   * Called debounced, on every composer keystroke, and flushed immediately on
+   * unmount (tab switch) by the renderer's `useAutosave` hook — not a manual
+   * save. Deliberately doesn't `touchProject`: an in-progress, unsent draft
+   * isn't saved project content, so it shouldn't bump "last updated."
+   */
+  async saveDraft(projectId: string, context: AiAssistantContext, text: string): Promise<void> {
+    const dir = await requireProjectDir(projectId)
+    await writeJsonFile(draftPath(dir, context), { text })
   }
 
   /** Sends a user message, calls the Anthropic API, and persists both the question and the reply. */

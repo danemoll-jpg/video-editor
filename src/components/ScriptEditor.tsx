@@ -1,12 +1,19 @@
 import { useEffect, useState } from 'react'
 import type { Script } from '../api'
 import { formatDate } from '../format'
+import { useAutosave } from '../useAutosave'
 import AiAssistantPanel from './AiAssistantPanel'
 
 interface Props {
   projectId: string
 }
 
+/**
+ * As of 2026-09-14, saves are debounced-automatic (see `useAutosave`), not
+ * dependent on the Save button/Ctrl+S — both still work, as an explicit
+ * "save right now" affordance, but neither is required anymore to avoid
+ * losing an edit. See IdeaEditor.tsx, which shares this exact pattern.
+ */
 export default function ScriptEditor({ projectId }: Props) {
   const [script, setScript] = useState<Script | null>(null)
   const [draft, setDraft] = useState('')
@@ -38,16 +45,24 @@ export default function ScriptEditor({ projectId }: Props) {
 
   const dirty = script !== null && draft !== script.content
 
-  async function handleSave() {
+  async function persist(content: string) {
     setSaving(true)
     try {
-      setScript(await window.api.saveScript(projectId, draft))
+      setScript(await window.api.saveScript(projectId, content))
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setSaving(false)
     }
+  }
+
+  // Debounced-automatic save, flushed immediately if this tab is switched
+  // away from before the debounce fires — see useAutosave.ts's header.
+  useAutosave(draft, dirty, persist)
+
+  function handleSave() {
+    persist(draft)
   }
 
   if (loading) return <p className="muted">Loading script…</p>
@@ -63,7 +78,13 @@ export default function ScriptEditor({ projectId }: Props) {
 
       <div className="script-editor__toolbar">
         <span className="muted">
-          {script?.updatedAt ? `Last saved ${formatDate(script.updatedAt)}` : 'Not saved yet'}
+          {saving
+            ? 'Saving…'
+            : dirty
+              ? 'Unsaved changes — saving automatically…'
+              : script?.updatedAt
+                ? `Last saved ${formatDate(script.updatedAt)}`
+                : 'Not saved yet'}
         </span>
         <div className="spacer" />
         <button className="btn btn--primary" disabled={!dirty || saving} onClick={handleSave}>

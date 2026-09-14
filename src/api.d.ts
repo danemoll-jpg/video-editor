@@ -222,6 +222,8 @@ declare global {
 
       listAiMessages(projectId: string, context: AiAssistantContext): Promise<AiMessage[]>
       sendAiMessage(projectId: string, context: AiAssistantContext, text: string): Promise<AiMessage[]>
+      getAiDraft(projectId: string, context: AiAssistantContext): Promise<string>
+      saveAiDraft(projectId: string, context: AiAssistantContext, text: string): Promise<void>
 
       getMediaLibrary(projectId: string): Promise<MediaLibraryEntry[]>
       listExports(projectId: string): Promise<ExportFile[]>

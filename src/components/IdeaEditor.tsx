@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react'
 import type { Idea } from '../api'
 import { formatDate } from '../format'
+import { useAutosave } from '../useAutosave'
 import AiAssistantPanel from './AiAssistantPanel'
 
 interface Props {
   projectId: string
 }
 
-/** Phase 4's Idea tab — freeform premise/plot notes, same simple pattern as ScriptEditor. */
+/**
+ * Phase 4's Idea tab — freeform premise/plot notes, same simple pattern as
+ * ScriptEditor. As of 2026-09-14, saves are debounced-automatic (see
+ * `useAutosave`), not dependent on the Save button/Ctrl+S — both still work,
+ * as an explicit "save right now" affordance, but neither is required
+ * anymore to avoid losing an edit.
+ */
 export default function IdeaEditor({ projectId }: Props) {
   const [idea, setIdea] = useState<Idea | null>(null)
   const [draft, setDraft] = useState('')
@@ -39,16 +46,24 @@ export default function IdeaEditor({ projectId }: Props) {
 
   const dirty = idea !== null && draft !== idea.content
 
-  async function handleSave() {
+  async function persist(content: string) {
     setSaving(true)
     try {
-      setIdea(await window.api.saveIdea(projectId, draft))
+      setIdea(await window.api.saveIdea(projectId, content))
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setSaving(false)
     }
+  }
+
+  // Debounced-automatic save, flushed immediately if this tab is switched
+  // away from before the debounce fires — see useAutosave.ts's header.
+  useAutosave(draft, dirty, persist)
+
+  function handleSave() {
+    persist(draft)
   }
 
   if (loading) return <p className="muted">Loading idea notes…</p>
@@ -64,7 +79,13 @@ export default function IdeaEditor({ projectId }: Props) {
 
       <div className="script-editor__toolbar">
         <span className="muted">
-          {idea?.updatedAt ? `Last saved ${formatDate(idea.updatedAt)}` : 'Not saved yet'}
+          {saving
+            ? 'Saving…'
+            : dirty
+              ? 'Unsaved changes — saving automatically…'
+              : idea?.updatedAt
+                ? `Last saved ${formatDate(idea.updatedAt)}`
+                : 'Not saved yet'}
         </span>
         <div className="spacer" />
         <button className="btn btn--primary" disabled={!dirty || saving} onClick={handleSave}>
