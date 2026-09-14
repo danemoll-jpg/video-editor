@@ -3,7 +3,7 @@
 // electron/preload.ts, electron/projectManager.ts, and
 // electron/productionManager.ts.
 import type { Asset, AssetKind, ProjectSummary } from '../electron/projectManager'
-import type { Idea, Scene, Script, Shot } from '../electron/productionManager'
+import type { GeneratedSceneOutline, Idea, Scene, Script, Shot } from '../electron/productionManager'
 import type {
   PromptEntry,
   PromptEntryInput,
@@ -53,6 +53,7 @@ export type {
   Script,
   Shot,
   ShotStatus,
+  GeneratedSceneOutline,
   PromptEntry,
   PromptEntryInput,
   PromptEntryUpdates,
@@ -150,6 +151,13 @@ declare global {
       ): Promise<Shot[]>
       deleteShot(projectId: string, shotId: string): Promise<Shot[]>
       moveShot(projectId: string, shotId: string, direction: 'up' | 'down'): Promise<Shot[]>
+
+      generateSceneOutline(projectId: string, scriptText: string): Promise<GeneratedSceneOutline[]>
+      applyGeneratedOutline(
+        projectId: string,
+        generated: GeneratedSceneOutline[],
+        mode: 'add' | 'replace',
+      ): Promise<{ scenes: Scene[]; shots: Shot[] }>
 
       listPromptEntries(projectId: string, kind: PromptLabKind): Promise<PromptEntry[]>
       createPromptEntry(projectId: string, kind: PromptLabKind, input: PromptEntryInput): Promise<PromptEntry[]>

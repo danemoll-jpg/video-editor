@@ -5,6 +5,7 @@ import { readJsonFile, writeJsonFile } from './fsUtils'
 import { requireProjectDir, touchProject } from './projectPaths'
 import type { SettingsManager } from './settingsManager'
 import type { PromptLabKind } from './promptLabTypes'
+import type { GeneratedSceneOutline } from './productionManager'
 
 // --- Data model -------------------------------------------------------
 //
@@ -73,6 +74,76 @@ not a description of it.`,
 audio generation tool, or a good search term for finding a similar sound on a free/licensed SFX site.
 Favor short, concrete, sensory descriptions of the sound itself. When asked for one, give text ready
 to paste or search with, not a description of it.`,
+}
+
+/**
+ * System prompt for the "Generate Scenes & Shots" action (Script tab, added
+ * 2026-09-14) — a one-shot structured-generation call, not a chat turn, so
+ * it deliberately doesn't go through `sendMessage`/`SYSTEM_PROMPTS` above:
+ * nothing here gets saved to any `aiAssistant/<context>.json` conversation
+ * file, since it isn't a conversation. The prompt asks for strict JSON so
+ * `parseGeneratedOutline` below can turn it directly into
+ * `GeneratedSceneOutline[]` for `ProductionManager.applyGeneratedOutline`.
+ */
+const SCENE_OUTLINE_SYSTEM_PROMPT = `You are helping a solo creator turn a finished script for a short-form video into a first-pass production breakdown: scenes, and a shot breakdown within each scene.
+
+Read the script text the user provides and respond with ONLY a JSON array — no prose, no markdown code fences, nothing before or after it — matching exactly this shape:
+
+[
+  {
+    "title": "short scene title",
+    "description": "1-3 sentences describing what happens in this scene",
+    "shots": [
+      { "title": "short shot title", "description": "1-2 sentences describing what this shot shows" }
+    ]
+  }
+]
+
+Break the script into a sensible number of scenes, in script order, and break each scene into a sensible first-pass shot list (typically a few shots per scene, however many the scene's content actually calls for — a short scene might only need one). Titles and descriptions only: do not write video-generation prompts, camera-move jargon, or any field beyond title/description — that level of detail belongs to a separate, later step. Respond with the JSON array and nothing else.`
+
+/**
+ * Turns a raw model response into validated GeneratedSceneOutline[], or
+ * throws a clear error. Exported (unlike this file's other private helpers)
+ * so a scripted verification pass can exercise the real parsing logic
+ * directly against hand-written model-response fixtures, without spending
+ * real money on an actual Anthropic call just to test JSON handling.
+ */
+export function parseGeneratedOutline(raw: string): GeneratedSceneOutline[] {
+  // Strip a markdown code fence if the model wrapped its JSON in one despite being asked not to.
+  const cleaned = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/```\s*$/, '')
+    .trim()
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(cleaned)
+  } catch {
+    throw new Error("The AI's response wasn't valid JSON — try generating again.")
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error('The AI did not return any scenes — try generating again.')
+  }
+
+  return parsed.map((item, i) => {
+    if (typeof item !== 'object' || item === null) {
+      throw new Error(`Scene ${i + 1} in the AI's response was malformed — try generating again.`)
+    }
+    const scene = item as Record<string, unknown>
+    const rawShots = Array.isArray(scene.shots) ? scene.shots : []
+    return {
+      title: typeof scene.title === 'string' ? scene.title : '',
+      description: typeof scene.description === 'string' ? scene.description : '',
+      shots: rawShots.map((s) => {
+        const shot = (typeof s === 'object' && s !== null ? s : {}) as Record<string, unknown>
+        return {
+          title: typeof shot.title === 'string' ? shot.title : '',
+          description: typeof shot.description === 'string' ? shot.description : '',
+        }
+      }),
+    }
+  })
 }
 
 function conversationPath(dir: string, context: AiAssistantContext): string {
@@ -187,5 +258,43 @@ export class AiAssistantManager {
     await writeJsonFile(conversationPath(dir, context), messages)
     await touchProject(dir)
     return messages
+  }
+
+  /**
+   * The "Generate Scenes & Shots" action (Script tab): sends the project's
+   * script text as a one-shot structured-generation request (not a saved
+   * chat turn — see `SCENE_OUTLINE_SYSTEM_PROMPT`'s comment above) and
+   * returns the parsed outline. This method only calls the API and parses
+   * the result — it writes nothing to the project itself; the caller (the
+   * renderer's Generate dialog, via `ProductionManager.applyGeneratedOutline`)
+   * decides whether to add or replace, since only it knows whether the
+   * project already has scenes and what the user chose to do about that.
+   */
+  async generateSceneOutline(projectId: string, scriptText: string): Promise<GeneratedSceneOutline[]> {
+    const trimmed = scriptText.trim()
+    if (!trimmed) throw new Error('Write a script first — there is nothing to generate scenes from.')
+
+    const apiKey = await this.settings.getDecryptedApiKey()
+    if (!apiKey) throw new Error('No Anthropic API key configured. Add one in Settings first.')
+
+    // Validates the project exists; this call itself writes nothing to disk.
+    await requireProjectDir(projectId)
+
+    let raw: string
+    try {
+      const client = new Anthropic({ apiKey })
+      const response = await client.messages.create({
+        model: AI_MODEL,
+        max_tokens: 8192,
+        system: SCENE_OUTLINE_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: trimmed }],
+      })
+      const textBlock = response.content.find((block) => block.type === 'text')
+      raw = textBlock && textBlock.type === 'text' ? textBlock.text : ''
+    } catch (err) {
+      throw new Error(describeError(err))
+    }
+
+    return parseGeneratedOutline(raw)
   }
 }

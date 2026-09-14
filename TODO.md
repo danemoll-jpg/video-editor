@@ -1311,6 +1311,107 @@ real API access wired up.
   editable/reorderable/deletable through the existing Scenes & Shots tab
   UI like any other, no special "AI-generated" marker needed.
 
+  **BUILT (2026-09-14), all of the above scope — not yet confirmed by Dan's
+  own hands, per this project's normal pattern.** A "✨ Generate Scenes &
+  Shots" button sits in the Script tab's toolbar (disabled until there's
+  script text), opening a new `GenerateOutlineDialog.tsx`. The work split
+  the same way the rest of the app splits: `aiAssistantManager.ts` gained
+  `generateSceneOutline(projectId, scriptText)`, a one-shot structured-
+  generation call (not a saved chat turn — nothing here touches any
+  `aiAssistant/<context>.json` conversation file) with its own system
+  prompt instructing the model to return *only* a JSON array of
+  `{ title, description, shots: [{ title, description }] }`, parsed and
+  validated by a new `parseGeneratedOutline` (strips an accidental markdown
+  fence, throws a clear error on invalid/empty JSON, coerces malformed
+  fields rather than crashing on them). `productionManager.ts` gained
+  `applyGeneratedOutline(projectId, generated, mode)`, which actually
+  creates the `Scene`/`Shot` records — generated shots default to
+  `'planned'` status and otherwise come out identical in shape to a
+  manually-created scene/shot (empty `promptText`, no linked asset/SFX/
+  songs), so nothing downstream needs to know they were AI-generated.
+  These two calls are deliberately separate manager methods, wired together
+  only in `main.ts`'s IPC handler — the Anthropic call and the actual data
+  write are two different responsibilities, same split as everywhere else
+  in this app.
+  - **Ask-before-replacing, built as asked, not a silent default either
+    way.** `GenerateOutlineDialog` checks `listScenes`/`listShots` as soon
+    as it opens; if the project already has scenes it shows the real
+    existing count and two explicit choices — "Add Alongside Existing" or
+    "Replace Existing" — instead of guessing. Nothing is sent to Anthropic
+    until the user picks one (so canceling costs nothing).
+  - **Replace doesn't bare-overwrite.** `applyGeneratedOutline` snapshots
+    the current `scenes.json`/`shots.json` into a new, timestamped
+    `script/backups/<timestamp>/` folder inside the project *before*
+    writing the new outline over them — recoverable via "Open Folder," not
+    silently gone — consistent in spirit with how asset/project deletes
+    already use the OS trash elsewhere in the app, adapted to a JSON-array
+    data shape where `shell.trashItem` (which operates on real files) isn't
+    a direct fit. No backup folder is created when there was nothing to
+    back up (a fresh project with zero existing scenes).
+  - **Verification status:** `npm run typecheck` and `npm run build` both
+    succeed. Confirmed working on this machine, via a scripted integration
+    test run through the real Electron runtime (same pattern as every
+    prior phase): `parseGeneratedOutline` against hand-written model-
+    response fixtures (a fenced valid array, invalid JSON, a non-array, an
+    empty array, malformed fields) — all behave correctly, including the
+    fenced-JSON case since a real model reply isn't guaranteed to skip
+    markdown despite being asked to; `generateSceneOutline`'s two guard
+    clauses (empty script text, no API key configured) against a fake
+    `SettingsManager` stand-in, confirming *no real network call is made*
+    for either — genuinely the same "don't spend Dan's money to test an
+    error path" discipline Phase 4's verification used; then
+    `applyGeneratedOutline` against a real test project through the real
+    `ProductionManager`: add-mode on a fresh project (correct scene/shot
+    counts, contiguous order, Planned status, no stray links), add-mode
+    layered on top of a manually-created scene (existing data untouched,
+    order stays a clean 0..n-1 permutation), and replace-mode — confirmed
+    the live files hold only the new outline *and* that the backup folder
+    exists with the exact pre-replace scene/shot counts, including the
+    specific manually-added scene surviving inside it — plus confirmed no
+    backup folder is created when replacing on a project with nothing to
+    back up. Also confirmed via a scripted Playwright pass against the
+    real, built Electron window (same technique as every prior phase's UI
+    verification, an isolated `--user-data-dir` so it can't collide with
+    Dan's real profile): created a project via the real UI; the Generate
+    button is disabled with an empty script and enables once script text
+    exists; opening the dialog on a scene-free project shows the plain
+    "ready to generate" screen; clicking Generate with no API key
+    configured (this isolated profile has none, regardless of Dan's real
+    key in his actual profile) shows the exact real
+    "No Anthropic API key configured" error banner in the live UI, not a
+    generic failure; manually added a real scene via the Scenes & Shots
+    tab, reopened the dialog, and confirmed it correctly detected the
+    existing scene, showed the right count, and offered both the "Add
+    Alongside Existing" and "Replace Existing" choices with the backup
+    explanation text; confirmed Cancel closes the dialog without touching
+    any data. All throwaway test projects (both the manager-level pass's
+    and the UI pass's) were cleaned up (trashed) afterward — confirmed via
+    a fresh `listProjects()` call that none were left behind.
+  - **Deliberately not exercised this round, same reasoning as Phase 4's
+    original verification:** an actual successful Anthropic call (real
+    script in, real generated scenes/shots out) — that costs real money on
+    Dan's key and needs his real Settings profile, not the isolated test
+    profile the scripted UI pass used. The JSON-parsing/validation logic
+    itself *is* covered above, directly, against hand-written fixtures
+    shaped like a real model response — what's *not* covered is whether
+    Claude's actual replies reliably match that shape/quality in practice.
+    Dan's own pass should write or reuse a real script, click "Generate
+    Scenes & Shots," try both "no existing scenes" and "existing scenes"
+    paths (the latter needs a real scene created first), confirm the
+    generated scenes/shots read sensibly and land correctly in the Scenes &
+    Shots tab, and — for Replace specifically — confirm the backed-up
+    `script/backups/<timestamp>/` folder is really there afterward.
+  - **Still not done / not verified:** no automated test suite (same
+    caveat as every phase). No way to preview/edit the generated outline
+    before it's applied — Generate commits straight to scenes/shots, and
+    any cleanup happens afterward in the normal Scenes & Shots UI; not
+    asked for, and Replace's backup gives a safety net if a generation
+    comes out badly. No limit on script length sent to the API — a very
+    long script could hit context/output-token limits or produce a
+    truncated/invalid JSON response; `parseGeneratedOutline` fails loudly
+    rather than silently in that case (per the validation above), but
+    there's no upfront length warning.
+
 **Phase 3 is now considered complete.** The SFX/ElevenLabs typing bug
 (investigated above) turned out to be intermittent, not a real defect —
 confirmed by Dan that it now works fine even via the exact repro steps that

@@ -81,6 +81,30 @@ export interface Shot {
   updatedAt: string
 }
 
+// --- AI-generated scene/shot outline (2026-09-14) ------------------------
+//
+// The "Generate Scenes & Shots" action (Script tab) sends the project's
+// script text to the Anthropic API — see aiAssistantManager.ts's
+// `generateSceneOutline`, which returns this shape — and this manager's
+// `applyGeneratedOutline` below turns it into real Scene/Shot records.
+// Title/description only, deliberately: no Grok prompt text gets
+// auto-populated here, that stays a separate, more detailed Prompt Lab
+// step. This type lives here rather than in aiAssistantManager.ts because
+// it's fundamentally "input for creating scenes/shots" — the same role
+// `createScene`/`createShot`'s parameters play — the AI is just the one
+// producing it in bulk instead of a human typing one at a time.
+
+export interface GeneratedShotOutline {
+  title: string
+  description: string
+}
+
+export interface GeneratedSceneOutline {
+  title: string
+  description: string
+  shots: GeneratedShotOutline[]
+}
+
 const EMPTY_SCRIPT: Script = { content: '', updatedAt: '' }
 const EMPTY_IDEA: Idea = { content: '', updatedAt: '' }
 
@@ -361,5 +385,95 @@ export class ProductionManager {
 
   private async writeShots(dir: string, shots: Shot[]): Promise<void> {
     await writeJsonFile(shotsPath(dir), shots)
+  }
+
+  // --- AI-generated scene/shot outline -------------------------------------
+
+  /**
+   * Applies an AI-generated scene/shot outline (see aiAssistantManager.ts's
+   * `generateSceneOutline`) to the project.
+   *
+   * `mode: 'add'` appends the generated scenes after whatever scenes/shots
+   * already exist. `mode: 'replace'` discards the existing scenes/shots —
+   * but not silently: per this project's repeated lesson about being
+   * careful with real project data on destructive operations (see
+   * CLAUDE.md/TODO.md's library-relocation incident), the current
+   * scenes.json/shots.json are first snapshotted into a timestamped
+   * `script/backups/<timestamp>/` folder before being overwritten, so a bad
+   * generation can't actually destroy existing planning work — it's
+   * recoverable from that folder (visible via "Open Folder"), not gone.
+   * The caller (the renderer's Generate dialog) is responsible for asking
+   * the user which mode to use when scenes already exist — this method
+   * itself doesn't prompt, same as every other manager method.
+   *
+   * Generated shots default to 'planned' status and scenes/shots otherwise
+   * get the same shape a manually-created one gets from createScene/
+   * createShot (empty promptText, no linked asset/SFX/songs) — once
+   * created, they're indistinguishable from a manually-added scene/shot.
+   */
+  async applyGeneratedOutline(
+    projectId: string,
+    generated: GeneratedSceneOutline[],
+    mode: 'add' | 'replace',
+  ): Promise<{ scenes: Scene[]; shots: Shot[] }> {
+    const dir = await requireProjectDir(projectId)
+    const existingScenes = await this.readScenes(dir)
+    const existingShots = await this.readShots(dir)
+
+    if (mode === 'replace' && (existingScenes.length > 0 || existingShots.length > 0)) {
+      await this.backupScenesAndShots(dir, existingScenes, existingShots)
+    }
+
+    const baseScenes = mode === 'replace' ? [] : existingScenes
+    const baseShots = mode === 'replace' ? [] : existingShots
+    let sceneOrder = baseScenes.length
+    const now = new Date().toISOString()
+
+    const newScenes: Scene[] = []
+    const newShots: Shot[] = []
+    for (const g of generated) {
+      const scene: Scene = {
+        id: randomUUID(),
+        title: g.title.trim() || 'Untitled Scene',
+        description: g.description ?? '',
+        order: sceneOrder++,
+        linkedSongAssetIds: [],
+        createdAt: now,
+        updatedAt: now,
+      }
+      newScenes.push(scene)
+
+      let shotOrder = 0
+      for (const gs of g.shots) {
+        newShots.push({
+          id: randomUUID(),
+          sceneId: scene.id,
+          title: gs.title.trim() || 'Untitled Shot',
+          description: gs.description ?? '',
+          promptText: '',
+          status: 'planned',
+          order: shotOrder++,
+          linkedAssetId: null,
+          linkedSfxIds: [],
+          createdAt: now,
+          updatedAt: now,
+        })
+      }
+    }
+
+    const scenes = [...baseScenes, ...newScenes]
+    const shots = [...baseShots, ...newShots]
+    await this.writeScenes(dir, scenes)
+    await this.writeShots(dir, shots)
+    await touchProject(dir)
+    return { scenes: sortByOrder(scenes), shots: sortByOrder(shots) }
+  }
+
+  /** Snapshots the current scenes/shots to a timestamped backup folder before a destructive replace. */
+  private async backupScenesAndShots(dir: string, scenes: Scene[], shots: Shot[]): Promise<void> {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const backupDir = path.join(dir, 'script', 'backups', stamp)
+    await writeJsonFile(path.join(backupDir, 'scenes.json'), scenes)
+    await writeJsonFile(path.join(backupDir, 'shots.json'), shots)
   }
 }

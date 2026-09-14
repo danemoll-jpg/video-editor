@@ -3,6 +3,7 @@ import type { Script } from '../api'
 import { formatDate } from '../format'
 import { useAutosave } from '../useAutosave'
 import AiAssistantPanel from './AiAssistantPanel'
+import GenerateOutlineDialog from './GenerateOutlineDialog'
 
 interface Props {
   projectId: string
@@ -20,6 +21,7 @@ export default function ScriptEditor({ projectId }: Props) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showGenerateDialog, setShowGenerateDialog] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -87,12 +89,23 @@ export default function ScriptEditor({ projectId }: Props) {
                 : 'Not saved yet'}
         </span>
         <div className="spacer" />
+        <button className="btn" disabled={!draft.trim()} onClick={() => setShowGenerateDialog(true)}>
+          ✨ Generate Scenes & Shots
+        </button>
         <button className="btn btn--primary" disabled={!dirty || saving} onClick={handleSave}>
           {saving ? 'Saving…' : 'Save Script'}
         </button>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
+
+      {showGenerateDialog && (
+        <GenerateOutlineDialog
+          projectId={projectId}
+          scriptText={draft}
+          onClose={() => setShowGenerateDialog(false)}
+        />
+      )}
 
       <textarea
         className="script-editor__textarea"

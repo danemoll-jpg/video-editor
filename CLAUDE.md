@@ -162,13 +162,20 @@ confirmed to have hit disk via a full app reload. See TODO.md's Current
 Objective for the full root-cause and verification writeup. **CONFIRMED by
 Dan's own hands-on testing (2026-09-14).** Closed.
 
-**NEW PRIORITY (2026-09-14), jumps ahead of Phase 7: AI-generated
-scene/shot outline from the script**, using Phase 4's existing AI
-Assistant API plumbing. Generates both scenes and a first-pass shot
-breakdown (title/description only — no Grok prompt text, that stays a
-separate Prompt Lab step). If scenes already exist, must ask before
-replacing rather than silently picking add-or-replace. See TODO.md's
-Current Objective for full scope.
+**AI-generated scene/shot outline from the script — built (2026-09-14), not
+yet confirmed by Dan's own hands.** A "✨ Generate Scenes & Shots" button on
+the Script tab, using Phase 4's existing AI Assistant API plumbing, generates
+both scenes and a first-pass shot breakdown within each (title/description
+only — no Grok prompt text, that stays a separate Prompt Lab step); generated
+shots default to Planned status like manually-created ones. If the project
+already has scenes, a dialog asks first and offers both real choices — add
+the generated scenes alongside the existing set, or replace it entirely,
+which snapshots the existing scenes.json/shots.json into a timestamped
+`script/backups/<timestamp>/` folder first rather than a bare overwrite.
+Once created, generated scenes/shots are ordinary scenes/shots — editable/
+reorderable/deletable through the existing Scenes & Shots tab, no
+"AI-generated" marker. See TODO.md's Current Objective for the full
+built/verified record.
 
 This is **Dan's Video Studio** — a personal desktop app covering the full
 creative process (idea → script → scenes → shots → AI prompts → generated

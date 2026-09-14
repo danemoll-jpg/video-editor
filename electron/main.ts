@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import path from 'node:path'
 import { ProjectManager } from './projectManager'
-import { ProductionManager } from './productionManager'
+import { ProductionManager, type GeneratedSceneOutline } from './productionManager'
 import { PromptLabManager, type PromptEntryInput, type PromptEntryUpdates, type RatingInput, type RatingUpdates } from './promptLabManager'
 import {
   SfxLibraryManager,
@@ -331,6 +331,20 @@ ipcMain.handle('ai:getDraft', (_e, projectId: string, context: AiAssistantContex
 )
 ipcMain.handle('ai:saveDraft', (_e, projectId: string, context: AiAssistantContext, text: string) =>
   aiAssistantManager.saveDraft(projectId, context, text),
+)
+
+// "Generate Scenes & Shots" (Script tab, 2026-09-14): the AI call and the
+// scene/shot creation are two separate manager calls, wired together here —
+// aiAssistantManager only talks to Anthropic and parses the result;
+// productionManager owns actually writing scenes/shots (including the
+// add-vs-replace choice and the pre-replace backup).
+ipcMain.handle('ai:generateSceneOutline', (_e, projectId: string, scriptText: string) =>
+  aiAssistantManager.generateSceneOutline(projectId, scriptText),
+)
+ipcMain.handle(
+  'scenes:applyGenerated',
+  (_e, projectId: string, generated: GeneratedSceneOutline[], mode: 'add' | 'replace') =>
+    productionManager.applyGeneratedOutline(projectId, generated, mode),
 )
 
 // --- IPC: Media Library (Phase 5) -------------------------------------------

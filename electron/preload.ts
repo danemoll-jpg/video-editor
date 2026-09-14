@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Asset, ProjectSummary } from './projectManager'
-import type { Idea, Scene, Script, Shot } from './productionManager'
+import type { GeneratedSceneOutline, Idea, Scene, Script, Shot } from './productionManager'
 import type {
   PromptEntry,
   PromptEntryInput,
@@ -81,6 +81,15 @@ const api = {
     ipcRenderer.invoke('shots:delete', projectId, shotId),
   moveShot: (projectId: string, shotId: string, direction: 'up' | 'down'): Promise<Shot[]> =>
     ipcRenderer.invoke('shots:move', projectId, shotId, direction),
+
+  generateSceneOutline: (projectId: string, scriptText: string): Promise<GeneratedSceneOutline[]> =>
+    ipcRenderer.invoke('ai:generateSceneOutline', projectId, scriptText),
+  applyGeneratedOutline: (
+    projectId: string,
+    generated: GeneratedSceneOutline[],
+    mode: 'add' | 'replace',
+  ): Promise<{ scenes: Scene[]; shots: Shot[] }> =>
+    ipcRenderer.invoke('scenes:applyGenerated', projectId, generated, mode),
 
   listPromptEntries: (projectId: string, kind: PromptLabKind): Promise<PromptEntry[]> =>
     ipcRenderer.invoke('promptlab:list', projectId, kind),
