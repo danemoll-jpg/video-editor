@@ -146,6 +146,15 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
+**NEW, three items from Dan actually using the now-visible waveform
+(2026-09-15):** (1) a real renderer-crash bug ("Aw, Snap!") at extreme
+zoom on a long file — the canvas-width-limit edge case flagged two rounds
+ago as theoretical, now hit for real; needs a clamped max zoom level. (2)
+A time axis with tick marks/labels on the waveform — none exists today.
+(3) A clipping indicator (visual highlight, e.g. red, on samples that hit
+full scale) — none exists today. See TODO.md's Current Objective for full
+detail — none of these are built yet.
+
 **Waveform-not-visible bug — RESOLVED (2026-09-15), same-day follow-up
 round, built and pixel/layout-verified.** An earlier round that same day
 fixed a real stereo phase-cancellation bug in peak computation, verified

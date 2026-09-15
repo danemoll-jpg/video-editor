@@ -1191,6 +1191,33 @@ decided — its live preview was already correct via a CSS flip.
 
 Current Objective (Focus Area)
 
+**NEW, three items found by Dan actually using the now-visible waveform
+(2026-09-15):**
+
+1. **BUG: zooming in far enough causes a real renderer crash** (white
+   screen, Electron/Chromium's "Aw, Snap!" page) — not just a blank
+   canvas. This is the theoretical edge case flagged (but not hit) two
+   rounds ago actually happening for real: `canvasWidth` (duration ×
+   pixels-per-second) grows unbounded as zoom increases and eventually
+   exceeds the browser's real canvas size limit, crashing the renderer
+   process rather than degrading gracefully. **Fix: clamp the maximum
+   zoom level** so canvas width can never approach that limit — disable
+   further "Zoom +" (or otherwise stop it) once at the safe maximum,
+   rather than letting the user drive off the edge. Test against Dan's
+   real 230-second file specifically, at the zoom level that actually
+   crashed, not just a short synthetic clip.
+2. **Add a time axis with tick marks and labels to the waveform.** Right
+   now there's no way to see what timestamp you're looking at without the
+   "Playhead/Clip/Kept range" text readout above it. Add real tick marks
+   (adaptive spacing depending on zoom level — e.g. every 10s zoomed out,
+   every 1s zoomed in) with time labels along the waveform.
+3. **Add a clipping indicator to the waveform.** Right now the waveform
+   gives no visual signal when the audio is too loud/distorted — real
+   audio editors typically highlight (commonly in red) any sample that
+   hits or exceeds full scale (at/near ±1.0 / 0 dBFS). Add this as a
+   visual treatment on the waveform itself (e.g. coloring the peak
+   differently wherever clipping is detected), not a separate report.
+
 **BUG — RESOLVED (2026-09-15, see below for this round's fix); was still
 broken after an earlier same-day fix** — that earlier round left "still no
 visual" on Dan's real file (`7 or 8 Hours, Give or Take.mp3`,
