@@ -141,6 +141,15 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
+**NEW (2026-09-15), scoped and ready: Audio Editor within the Media
+Library, "solid waveform editor" tier only** (trim/split, fade with real
+curve shapes, volume automation, normalize — deliberately not pitch/tempo
+shift, noise reduction, or multi-track mixing). Non-destructive (new asset,
+never overwrites the original), live preview via Web Audio API, real
+output rendered through FFmpeg on commit — same split that worked for
+chroma key. See TODO.md's Current Objective for full scope — not yet
+built.
+
 **NEW, PRIORITY (2026-09-14/15), Style tab + Phase 8 built while Dan tests
 Phase 7 — not yet confirmed by Dan's own hands.** A new Style tab (mirrors
 Idea/Script exactly: freeform text, debounced autosave, an embedded AI

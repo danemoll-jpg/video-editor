@@ -1191,6 +1191,34 @@ decided — its live preview was already correct via a CSS flip.
 
 Current Objective (Focus Area)
 
+**NEW (2026-09-15), scoped and ready — Audio Editor within the Media
+Library, "solid waveform editor" tier.** Previously deferred as a vague
+backlog idea; now properly scoped in conversation. Dan's own words on
+scope: "start with 1 [tier], and see where it goes from there" —
+deliberately not building pitch/tempo shift, noise reduction, or
+multi-track mixing yet; add those later only if actually wanted.
+- **"✏️ Edit Audio" action on an audio asset's card in the Media
+  Library** opens the waveform editor.
+- **Non-destructive by design, consistent with how every other asset
+  operation in this app already works** (Extract Audio, imports, etc.):
+  editing produces a **new** derived audio asset, never overwrites the
+  original file.
+- **Waveform display**: zoom, click-drag range selection.
+- **Editing operations**: trim/split; fade in/out with adjustable
+  duration AND curve shape (not just linear — FFmpeg's `afade` supports
+  several real curve types, expose more than one); volume **automation**
+  (a real envelope with multiple points over time, not just one flat gain
+  level); normalize (peak or loudness-based).
+- **Live preview via Web Audio API** (`AudioContext`/`AudioBufferSourceNode`/
+  `GainNode`) for instant interactive feedback while adjusting fades/volume
+  — same split that worked well for chroma key (real-time JS for
+  interactivity, not a background FFmpeg round-trip per tweak).
+- **Committing an edit renders the real output via FFmpeg** (`afade`,
+  `atrim`, volume/loudnorm filters, composed into one filter chain),
+  written as a new asset — mirrors how the rest of this app already
+  separates "live interactive preview" from "the real FFmpeg-rendered
+  result" (chroma key, the reverse-preview proxy).
+
 **NEW, PRIORITY (2026-09-14), being built in parallel while Dan tests
 Phase 7: a Style tab, plus Phase 8 (Smarter Assistance) built around it.**
 Scoped in a chat conversation while Phase 7 was in progress — not tested
@@ -2678,6 +2706,19 @@ explicitly not chosen to reverse this, see item 3.
 
 Technical Notes / Blockers
 
+- **CORRECTION, worth reading before any future round (2026-09-15):
+  "teafa" and "sfh" were NEVER real projects — both were throwaway
+  test/practice projects, confirmed directly by Dan.** Many earlier
+  Completed Tasks write-ups in this file (written before that confirmation)
+  incorrectly call "teafa" "Dan's real project," and that stale label has
+  been copied forward into round after round since, purely because nobody
+  went back to fix the original wording. **Dan's actual real project is
+  "7 or 8 Hours, Give or Take Video."** The historical entries below are
+  left as-is (an accurate record of what was actually tested at the time,
+  even if the "real" label attached to it was wrong) rather than rewritten
+  — but any **new** write-up from here forward should not call "teafa" or
+  "sfh" real, and should refer to Dan's actual project by its real name
+  when it matters which one is meant.
 - **CONFIRMED to have resurfaced (2026-09-13): chroma-key-on-export bug
   (item 3), same symptom, on Dan's real project — no longer just a
   hypothetical "if it resurfaces."** See "Phase 6 continued" in Completed
