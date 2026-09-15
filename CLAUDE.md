@@ -146,14 +146,24 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
-**NEW, three items from Dan actually using the now-visible waveform
-(2026-09-15):** (1) a real renderer-crash bug ("Aw, Snap!") at extreme
-zoom on a long file — the canvas-width-limit edge case flagged two rounds
-ago as theoretical, now hit for real; needs a clamped max zoom level. (2)
-A time axis with tick marks/labels on the waveform — none exists today.
-(3) A clipping indicator (visual highlight, e.g. red, on samples that hit
-full scale) — none exists today. See TODO.md's Current Objective for full
-detail — none of these are built yet.
+**Three items from Dan actually using the now-visible waveform — BUILT
+(2026-09-15), not yet confirmed by Dan's own hands.** (1) The real
+renderer-crash bug ("Aw, Snap!") at extreme zoom on a long file — the
+canvas-width-limit edge case flagged two rounds ago as theoretical, hit
+for real — is fixed: `AudioEditor.tsx`'s zoom now clamps to a safe
+`MAX_CANVAS_WIDTH` (8,000px, chosen to stay under both Blink's hard
+65,535px canvas-dimension limit and common GPU max-texture-size limits)
+instead of letting `canvasWidth` grow unbounded; "Zoom +" disables itself
+once at that ceiling. (2) A time axis (`.audio-editor__time-axis` canvas,
+tick marks + `m:ss` labels, adaptive spacing so labels never crowd
+regardless of zoom) now sits above the waveform. (3) A clipping indicator
+(`computeWaveformPeaks` now flags any column containing a sample at/above
+`CLIP_THRESHOLD` = 0.999; the waveform draws that column in red) is built.
+Verified via a new scripted Playwright pass
+(`scripts/verifyAudioEditorZoomAxisClipping.cjs`, 12/12 assertions) against
+a real 230.16s asset matching Dan's actual file's duration plus a
+deliberately-overdriven real clipped tone. See TODO.md's Current Objective
+for the full build/verification writeup, reported per-item as usual.
 
 **Waveform-not-visible bug — RESOLVED (2026-09-15), same-day follow-up
 round, built and pixel/layout-verified.** An earlier round that same day

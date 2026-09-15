@@ -104,10 +104,22 @@ export function computePeakGain(buffer: AudioBuffer, trimStart: number, trimEnd:
   return Math.min(20, 1 / peak)
 }
 
-/** Min/max sample pairs per pixel column, for drawing a waveform without redrawing from raw PCM on every zoom/scroll tick. */
+/**
+ * A sample at or above this absolute amplitude counts as "clipping" for the
+ * waveform's visual indicator (2026-09-15 ask: highlight samples at/near
+ * ±1.0 / 0 dBFS). Full scale is exactly 1.0, but real encoded/decoded audio
+ * legitimately lands a hair under that from lossy-codec quantization even
+ * when the source was clipped, so this stays just below 1.0 rather than
+ * requiring an exact match.
+ */
+export const CLIP_THRESHOLD = 0.999
+
+/** Min/max sample pairs per pixel column, for drawing a waveform without redrawing from raw PCM on every zoom/scroll tick — plus whether that column contains a sample at/above CLIP_THRESHOLD, for the clipping indicator. */
 export interface WaveformPeaks {
   min: Float32Array
   max: Float32Array
+  /** 1 where the column contains a sample at/above CLIP_THRESHOLD, else 0 — a plain byte flag rather than boolean[] so it stays a typed array like min/max. */
+  clipped: Uint8Array
 }
 
 /**
@@ -132,6 +144,7 @@ export function computeWaveformPeaks(buffer: AudioBuffer, pixelsPerSecond: numbe
   const totalColumns = Math.max(1, Math.ceil(buffer.duration * pixelsPerSecond))
   const min = new Float32Array(totalColumns)
   const max = new Float32Array(totalColumns)
+  const clipped = new Uint8Array(totalColumns)
   const samplesPerColumn = buffer.length / totalColumns
   const channelData: Float32Array[] = []
   for (let ch = 0; ch < buffer.numberOfChannels; ch++) channelData.push(buffer.getChannelData(ch))
@@ -141,11 +154,13 @@ export function computeWaveformPeaks(buffer: AudioBuffer, pixelsPerSecond: numbe
     const end = Math.max(start + 1, Math.floor((col + 1) * samplesPerColumn))
     let colMin = 1
     let colMax = -1
+    let colClipped = 0
     for (let i = start; i < end && i < buffer.length; i++) {
       for (const data of channelData) {
         const v = data[i]
         if (v < colMin) colMin = v
         if (v > colMax) colMax = v
+        if (v >= CLIP_THRESHOLD || v <= -CLIP_THRESHOLD) colClipped = 1
       }
     }
     if (colMin > colMax) {
@@ -154,6 +169,7 @@ export function computeWaveformPeaks(buffer: AudioBuffer, pixelsPerSecond: numbe
     }
     min[col] = colMin
     max[col] = colMax
+    clipped[col] = colClipped
   }
-  return { min, max }
+  return { min, max, clipped }
 }

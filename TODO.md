@@ -1218,6 +1218,115 @@ Current Objective (Focus Area)
    visual treatment on the waveform itself (e.g. coloring the peak
    differently wherever clipping is detected), not a separate report.
 
+**All three items above — BUILT (2026-09-15), not yet confirmed by Dan's own
+hands.** Reporting each separately, as this project's habit is:
+
+1. **Zoom-crash clamp — built.** `AudioEditor.tsx` gained a `MAX_CANVAS_WIDTH`
+   constant (8,000px) and a `maxPixelsPerSecondFor(duration)` helper that
+   caps `pixelsPerSecond` so `canvasWidth` (duration × pixelsPerSecond) can
+   never exceed it, replacing the old flat `MAX_PPS` (800) ceiling — for a
+   short clip the two are equivalent (800 stays the binding cap), but for
+   Dan's real 230.16s file the old ceiling would have reached 184,128px
+   (`230.16 × 800`), while the new one now caps out at 7,825px. 8,000 was
+   chosen deliberately conservative, not just "under Blink's hard 65,535px
+   per-axis canvas-element limit": canvases are GPU-texture-backed by
+   default in this app (`getContext('2d')` is never called with
+   `willReadFrequently`), and 8,192 is the lowest max-texture-size commonly
+   seen even on older/integrated GPUs — so the clamp holds regardless of
+   which GPU the renderer process lands on, not just on this machine's own.
+   The "Zoom +" button disables itself (labeled "Zoom + (max)" with a
+   tooltip explaining why) once `pixelsPerSecond` reaches that ceiling,
+   rather than silently clamping while still looking clickable — matches
+   the explicit ask to stop zoom-in at a safe maximum rather than degrade
+   past it. The initial auto-fit zoom on load is clamped the same way, for
+   consistency, though in practice it never came close to the old ceiling
+   either.
+2. **Time axis — built.** A new canvas (`.audio-editor__time-axis`, 22px
+   tall) sits above the waveform canvas inside the same `.audio-editor__
+   scroll` horizontally-scrolling container, always drawn at the identical
+   `canvasWidth`/scale so its ticks line up with the waveform beneath it
+   pixel-for-pixel. Tick spacing is adaptive: `pickTickInterval` walks a
+   fixed candidate list (0.1s/0.2s/0.5s/1s/2s/5s/10s/15s/30s/60s/2m/5m/10m/
+   15m/30m/1h) and picks the smallest interval whose on-screen spacing
+   (`interval × pixelsPerSecond`) is still ≥60px, so labels never crowd
+   together regardless of zoom — matching the ask's "every 10s zoomed out,
+   every 1s zoomed in" example as one point on that continuum rather than a
+   hard-coded two-tier rule. Labels render as `m:ss` (or `h:mm:ss` past an
+   hour), with a decimal digit on the seconds only once ticks are sub-second
+   apart (whole seconds are all a normal edit needs otherwise).
+3. **Clipping indicator — built.** `computeWaveformPeaks`
+   (`src/audioEditPreview.ts`) now also returns a per-column `clipped`
+   flag (a `Uint8Array` alongside the existing `min`/`max` typed arrays) —
+   true wherever any sample in that column's span is at/above a new
+   `CLIP_THRESHOLD` (0.999, not exactly 1.0, since real encoded/decoded
+   audio legitimately lands a hair under full scale from lossy-codec
+   quantization even when the true source was clipped). The waveform's draw
+   loop colors a clipped column in red (`var(--danger)`) instead of the
+   normal waveform/kept color — taking priority over the existing kept-vs-
+   trimmed-out coloring, though it still dims along with the rest of a
+   trimmed-out region so a clipped-but-discarded stretch doesn't visually
+   dominate over what's actually being kept. Purely a visual treatment on
+   the waveform itself, per the ask — no separate warning banner or report
+   was added.
+
+  **Verification status (all three items):**
+  - Confirmed working on this machine: `npm run typecheck` and `npm run
+    build` both succeed (renderer + main process).
+  - **CONFIRMED (2026-09-15), UI-level click-through — driven by Claude via
+    a new scripted Playwright pass
+    (`scripts/verifyAudioEditorZoomAxisClipping.cjs`) against the real,
+    built Electron window, not Dan's own hands (same technique and same
+    reason as every prior phase's UI verification)** — **12/12 assertions
+    passed**: seeded a real 230.16s sine-tone asset (matching Dan's actual
+    file's exact duration) and, separately, a real deliberately-overdriven
+    tone (`aevalsrc=1.5*sin(...)` piped through FFmpeg's `pcm_s16le`
+    encoder, which genuinely clips the samples on disk — not a synthetic
+    flag). On the long file: clicked "Zoom +" repeatedly and confirmed the
+    button disables itself after a bounded number of clicks (4, from this
+    file's auto-fit start) rather than being clickable forever; confirmed
+    the waveform canvas's real `width` attribute never exceeded 8,000px at
+    any point during that sequence and topped out at 7,825px — the old
+    code path would have reached 184,128px on this exact file; confirmed
+    the renderer window was still alive and responsive afterward (the
+    actual regression being fixed is a full process crash, not just an
+    off value). Time axis: confirmed the new canvas is visible on screen,
+    confirmed its width tracks the waveform canvas's width exactly (same
+    scale), confirmed it actually draws non-background pixel content (real
+    ticks/labels, not a blank fill) both at maximum zoom and after zooming
+    back out to a normal level (adaptive spacing holds at both extremes).
+    Clipping: confirmed the hint text under the waveform documents the
+    indicator; confirmed the overdriven tone's waveform canvas contains
+    real clip-red (`rgb(224,82,82)`) pixels; confirmed, as a negative
+    control, that the clean 230.16s sine tone (well under full scale) shows
+    **zero** clip-red pixels, ruling out a false-positive/always-on
+    indicator. Playwright was installed ad-hoc (`npm install --no-save
+    playwright`) and removed afterward, per this project's established
+    pattern; the script itself is left committed alongside the other
+    Audio Editor verification scripts.
+  - **Not independently re-verified this round via automation:** a true
+    pre-fix repro of the "Aw, Snap!" crash itself (i.e. running the old,
+    unclamped code against this exact scripted sequence to confirm it
+    really does crash before showing the fix prevents it) — rebuilding a
+    second, pre-fix copy of the app within the same automated pass was more
+    machinery than this fix warranted, given the root cause (canvasWidth
+    exceeding real browser/GPU limits) is a straightforward, directly-
+    observable arithmetic fact rather than something needing a live crash
+    to confirm. The fix is verified by direct measurement instead: the new
+    ceiling provably holds (canvas width never exceeds it) on the exact
+    file and zoom sequence that used to reach 184,128px.
+  - **Still not done / not verified:** no automated test suite (same
+    caveat as every phase). The clipping indicator flags a column red if
+    *any* sample within it clips — at very wide zoom-out, one red column
+    can represent many samples, only some of which actually clipped (a
+    resolution trade-off inherent to peak-downsampled waveform drawing in
+    general, not specific to this feature); zooming in narrows a red region
+    down to the actual clipped span. **Dan's own hands-on pass** — trying
+    all three on his own real files (in particular re-triggering the exact
+    zoom level that used to crash, checking the time-axis labels read
+    correctly at a few different zoom levels, and finding/confirming a
+    clipped moment in a real loud file if he has one) — is what's needed to
+    close this out.
+
 **BUG — RESOLVED (2026-09-15, see below for this round's fix); was still
 broken after an earlier same-day fix** — that earlier round left "still no
 visual" on Dan's real file (`7 or 8 Hours, Give or Take.mp3`,

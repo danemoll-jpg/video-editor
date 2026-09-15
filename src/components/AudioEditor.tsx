@@ -7,7 +7,7 @@ import {
   NORMALIZE_MODE_LABELS,
   defaultAudioEditSpec,
 } from '../../electron/audioEditTypes'
-import { buildFadeCurveSamples, computePeakGain, computeWaveformPeaks, type WaveformPeaks } from '../audioEditPreview'
+import { buildFadeCurveSamples, computePeakGain, computeWaveformPeaks, CLIP_THRESHOLD, type WaveformPeaks } from '../audioEditPreview'
 
 // The Audio Editor (TODO.md's "solid waveform editor" tier, 2026-09-15) —
 // opened via MediaLibraryCard's "✏️ Edit Audio" action. Non-destructive by
@@ -23,7 +23,51 @@ const MIN_PPS = 10
 const MAX_PPS = 800
 const WAVEFORM_HEIGHT = 140
 const ENVELOPE_HEIGHT = 70
+const TIME_AXIS_HEIGHT = 22
 const ENVELOPE_MAX_GAIN = 2
+
+// Zooming in on a long file used to let `canvasWidth` (duration ×
+// pixelsPerSecond) grow unbounded — for Dan's real 230.16s file at the old
+// MAX_PPS ceiling of 800, that's 184,128px wide. Blink's hard per-axis
+// canvas-element limit is 65,535px, and canvases are GPU-texture-backed by
+// default (this component never passes `willReadFrequently`), so a width
+// that far past it can fail GPU texture allocation outright — which is
+// exactly the real "Aw, Snap!" renderer crash Dan hit, not a theoretical
+// one. MAX_CANVAS_WIDTH stays comfortably under both that hard 65,535 limit
+// AND the lowest max-texture-size commonly seen on real (especially older/
+// integrated) GPUs (8,192) — so this holds regardless of which GPU the
+// renderer process ends up on. The zoom UI clamps to this rather than
+// letting the canvas grow past it and hoping the browser degrades
+// gracefully, per the explicit ask: stop zoom-in at a safe maximum instead.
+const MAX_CANVAS_WIDTH = 8000
+
+function maxPixelsPerSecondFor(duration: number): number {
+  return clamp(Math.floor(MAX_CANVAS_WIDTH / Math.max(duration, 0.001)), MIN_PPS, MAX_PPS)
+}
+
+// Adaptive time-axis tick spacing: the smallest of these whose on-screen
+// spacing (interval × pixelsPerSecond) is still legible, so ticks land every
+// ~10s zoomed out and as tight as ~0.1s zoomed all the way in, per the ask.
+const TICK_INTERVALS_SECONDS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600]
+const MIN_TICK_SPACING_PX = 60
+
+function pickTickInterval(pixelsPerSecond: number): number {
+  for (const interval of TICK_INTERVALS_SECONDS) {
+    if (interval * pixelsPerSecond >= MIN_TICK_SPACING_PX) return interval
+  }
+  return TICK_INTERVALS_SECONDS[TICK_INTERVALS_SECONDS.length - 1]
+}
+
+/** mm:ss (or h:mm:ss past an hour) — decimals only shown once ticks are sub-second apart, since whole seconds are all a normal edit needs. */
+function formatAxisTime(seconds: number, showDecimal: boolean): string {
+  const total = Math.max(0, seconds)
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  const secStr = showDecimal ? s.toFixed(1).padStart(4, '0') : Math.round(s).toString().padStart(2, '0')
+  const mStr = h > 0 ? m.toString().padStart(2, '0') : m.toString()
+  return h > 0 ? `${h}:${mStr}:${secStr}` : `${mStr}:${secStr}`
+}
 
 interface Props {
   projectId: string
@@ -66,6 +110,7 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
   const audioCtxRef = useRef<AudioContext | null>(null)
   const sourceRef = useRef<AudioBufferSourceNode | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const timeAxisCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const envelopeCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const draggingSelectionRef = useRef(false)
@@ -87,7 +132,7 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
         setAudioBuffer(buffer)
         setSpec(defaultAudioEditSpec(buffer.duration))
         setSplitTime(buffer.duration / 2)
-        setPixelsPerSecond(clamp(700 / Math.max(buffer.duration, 0.01), MIN_PPS, MAX_PPS))
+        setPixelsPerSecond(clamp(700 / Math.max(buffer.duration, 0.01), MIN_PPS, maxPixelsPerSecondFor(buffer.duration)))
       } catch (err) {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err))
       } finally {
@@ -112,6 +157,43 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
   const duration = audioBuffer?.duration ?? 0
   const trimmedDuration = spec ? Math.max(0, spec.trimEnd - spec.trimStart) : 0
   const canvasWidth = Math.max(1, Math.round(duration * pixelsPerSecond))
+  const maxPixelsPerSecond = useMemo(() => maxPixelsPerSecondFor(duration), [duration])
+  const atMaxZoom = pixelsPerSecond >= maxPixelsPerSecond - 0.001
+
+  // --- Time axis drawing ---------------------------------------------------
+
+  useEffect(() => {
+    const canvas = timeAxisCanvasRef.current
+    if (!canvas || !audioBuffer) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const styles = getComputedStyle(canvas)
+    const bg = styles.getPropertyValue('--bg').trim() || '#12141a'
+    const textColor = styles.getPropertyValue('--text-muted').trim() || '#888'
+    const tickColor = styles.getPropertyValue('--border').trim() || '#2c303a'
+
+    ctx.clearRect(0, 0, canvasWidth, TIME_AXIS_HEIGHT)
+    ctx.fillStyle = bg
+    ctx.fillRect(0, 0, canvasWidth, TIME_AXIS_HEIGHT)
+
+    const interval = pickTickInterval(pixelsPerSecond)
+    const showDecimal = interval < 1
+    const tickCount = Math.floor(duration / interval)
+
+    ctx.font = '10px sans-serif'
+    ctx.textBaseline = 'top'
+    for (let i = 0; i <= tickCount; i++) {
+      const t = i * interval
+      const x = t * pixelsPerSecond
+      ctx.strokeStyle = tickColor
+      ctx.beginPath()
+      ctx.moveTo(x + 0.5, TIME_AXIS_HEIGHT - 7)
+      ctx.lineTo(x + 0.5, TIME_AXIS_HEIGHT)
+      ctx.stroke()
+      ctx.fillStyle = textColor
+      ctx.fillText(formatAxisTime(t, showDecimal), x + 3, 2)
+    }
+  }, [audioBuffer, pixelsPerSecond, canvasWidth, duration])
 
   // --- Waveform drawing --------------------------------------------------
 
@@ -124,6 +206,7 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
     const bg = styles.getPropertyValue('--bg').trim() || '#12141a'
     const waveColor = styles.getPropertyValue('--text-muted').trim() || '#888'
     const keptColor = styles.getPropertyValue('--accent').trim() || '#4da3ff'
+    const clipColor = styles.getPropertyValue('--danger').trim() || '#e05252'
 
     ctx.clearRect(0, 0, canvasWidth, WAVEFORM_HEIGHT)
     ctx.fillStyle = bg
@@ -133,7 +216,13 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
     for (let x = 0; x < peaks.min.length; x++) {
       const t = x / pixelsPerSecond
       const kept = t >= spec.trimStart && t <= spec.trimEnd
-      ctx.strokeStyle = kept ? keptColor : waveColor
+      const isClipped = peaks.clipped[x] === 1
+      // Clipping always renders red regardless of kept/trimmed-out state —
+      // it's a warning about the source audio, not about the edit — but
+      // still dims along with the rest of the trimmed-out region so a
+      // clipped, discarded stretch doesn't visually dominate over the part
+      // that's actually being kept.
+      ctx.strokeStyle = isClipped ? clipColor : kept ? keptColor : waveColor
       ctx.globalAlpha = kept ? 1 : 0.35
       const y1 = mid + peaks.min[x] * mid
       const y2 = mid + peaks.max[x] * mid
@@ -423,11 +512,16 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
             </p>
 
             <div className="audio-editor__toolbar">
-              <button className="btn" onClick={() => setPixelsPerSecond((p) => clamp(p / 1.5, MIN_PPS, MAX_PPS))}>
+              <button className="btn" onClick={() => setPixelsPerSecond((p) => clamp(p / 1.5, MIN_PPS, maxPixelsPerSecond))}>
                 Zoom −
               </button>
-              <button className="btn" onClick={() => setPixelsPerSecond((p) => clamp(p * 1.5, MIN_PPS, MAX_PPS))}>
-                Zoom +
+              <button
+                className="btn"
+                disabled={atMaxZoom}
+                title={atMaxZoom ? "Maximum zoom for this file's length (avoids the canvas-crash bug on very wide waveforms)" : undefined}
+                onClick={() => setPixelsPerSecond((p) => clamp(p * 1.5, MIN_PPS, maxPixelsPerSecond))}
+              >
+                Zoom +{atMaxZoom ? ' (max)' : ''}
               </button>
               <button className="btn" onClick={isPlaying ? stopPlayback : play}>
                 {isPlaying ? '⏹ Stop' : '▶ Play'}
@@ -439,6 +533,7 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
             </div>
 
             <div className="audio-editor__scroll" ref={scrollRef}>
+              <canvas ref={timeAxisCanvasRef} width={canvasWidth} height={TIME_AXIS_HEIGHT} className="audio-editor__time-axis" />
               <canvas
                 ref={waveformCanvasRef}
                 width={canvasWidth}
@@ -461,8 +556,9 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
               />
             </div>
             <p className="clip-inspector__hint muted">
-              Waveform: click-drag to select a range. Envelope strip below it: click to add a volume point, drag a
-              point to move it.
+              Waveform: click-drag to select a range — red highlights any sample at or above full scale (±
+              {CLIP_THRESHOLD.toFixed(3)} / ~0 dBFS), i.e. clipping. Envelope strip below it: click to add a volume
+              point, drag a point to move it.
             </p>
 
             <div className="audio-editor__columns">

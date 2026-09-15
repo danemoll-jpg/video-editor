@@ -1651,6 +1651,11 @@ body {
   border-radius: 6px;
 }
 
+.audio-editor__time-axis {
+  display: block;
+  border-bottom: 1px solid var(--border);
+}
+
 .audio-editor__waveform {
   display: block;
   cursor: crosshair;
