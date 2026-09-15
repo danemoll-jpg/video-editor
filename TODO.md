@@ -1191,6 +1191,27 @@ decided — its live preview was already correct via a CSS flip.
 
 Current Objective (Focus Area)
 
+**BUG, confirmed by Dan (2026-09-15): the waveform canvas renders
+completely blank.** Zoom controls are present and clickable, but nothing
+visual ever appears — no waveform, not even a flat line. **Critical
+diagnostic detail: audio playback works fine** (Play actually plays the
+clip), which means decoding via `AudioContext`/`decodeAudioData` is
+succeeding and a real `AudioBuffer` with real samples exists — this
+narrows the bug specifically to the waveform's drawing code path
+(`audioEditPreview.ts`'s peak-downsampling and `AudioEditor.tsx`'s canvas
+draw calls), not audio loading/decoding. Worth checking, in order: is the
+canvas element actually sized (a canvas with 0 width/height draws nothing
+even if the draw calls run correctly); is the draw function actually being
+invoked at all (a missed effect dependency, a ref not yet attached on
+first render — this app has hit exactly this class of bug before, see the
+first-mount timing note under the SFX/ElevenLabs typing bug in Technical
+Notes below); or a scaling/coordinate bug causing peaks to draw with
+effectively zero height or off-canvas. **This is genuinely the first real
+exercise this UI has gotten at all** (the Playwright pass hung and never
+completed last round) — don't assume anything else in the modal works
+correctly either; treat this as the first real signal, not an isolated
+one-off.
+
 **NEW (2026-09-15), scoped and ready — Audio Editor within the Media
 Library, "solid waveform editor" tier.** Previously deferred as a vague
 backlog idea; now properly scoped in conversation. Dan's own words on

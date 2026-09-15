@@ -146,6 +146,14 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
+**BUG, confirmed by Dan (2026-09-15): waveform canvas renders completely
+blank**, though audio playback works fine — narrows the bug to the
+drawing code path (`audioEditPreview.ts` peak-downsampling /
+`AudioEditor.tsx` canvas draw calls), not audio decoding. This is the
+first real exercise the Audio Editor UI has gotten at all (last round's
+Playwright pass never completed), so don't assume the rest of the modal
+is fine either. See TODO.md's Current Objective for full diagnostic detail.
+
 **Audio Editor within the Media Library, "solid waveform editor" tier —
 BUILT (2026-09-15), not yet confirmed by Dan's own hands.** A new
 "✏️ Edit Audio" action on an audio asset's card in the Media Library
