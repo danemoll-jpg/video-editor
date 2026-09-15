@@ -14,6 +14,8 @@ import {
 } from './projectPaths'
 import { probeMedia } from './mediaProbe'
 import { extractAudioTrack } from './audioExtractor'
+import { renderAudioEdit } from './audioEditRenderer'
+import { defaultAudioEditSpec, type AudioEditSpec } from './audioEditTypes'
 
 // --- Data model -------------------------------------------------------
 //
@@ -260,6 +262,93 @@ export class ProjectManager {
     await this.writeAssets(dir, updated)
     await touchProject(dir)
     return updated
+  }
+
+  /**
+   * The Audio Editor's "commit" step (TODO.md's "solid waveform editor"
+   * tier) — renders `spec` (trim/fades/volume envelope/normalize) via
+   * FFmpeg into a brand-new audio asset, exactly mirroring
+   * `extractAudioAsset`'s non-destructive shape: the source file is never
+   * opened for writing, only read.
+   */
+  async commitAudioEdit(projectId: string, assetId: string, spec: AudioEditSpec): Promise<Asset[]> {
+    const dir = await requireProjectDir(projectId)
+    const assets = await this.readAssets(dir)
+    const source = assets.find((a) => a.id === assetId)
+    if (!source) throw new Error('Asset not found.')
+    if (source.kind !== 'audio') throw new Error('Only audio assets can be edited in the Audio Editor.')
+    if (!(spec.trimEnd > spec.trimStart)) throw new Error('Invalid trim range — the end must be after the start.')
+
+    const sourcePath = path.join(dir, source.relativePath)
+    const baseName = path.basename(source.originalName, path.extname(source.originalName))
+    const newAsset = await this.renderDerivedAudioAsset(dir, sourcePath, spec, `${baseName} (edited)`)
+
+    const updated = [...assets, newAsset]
+    await this.writeAssets(dir, updated)
+    await touchProject(dir)
+    return updated
+  }
+
+  /**
+   * The Audio Editor's "Split" action — cuts an audio asset into two new,
+   * independent assets at `splitTime` (seconds into the source), leaving
+   * the original untouched. Reuses the same FFmpeg render as
+   * `commitAudioEdit` (a plain trim spec, no fades/envelope/normalize) for
+   * each half rather than a second code path.
+   */
+  async splitAudioAsset(projectId: string, assetId: string, splitTime: number): Promise<Asset[]> {
+    const dir = await requireProjectDir(projectId)
+    const assets = await this.readAssets(dir)
+    const source = assets.find((a) => a.id === assetId)
+    if (!source) throw new Error('Asset not found.')
+    if (source.kind !== 'audio') throw new Error('Only audio assets can be split in the Audio Editor.')
+
+    const sourcePath = path.join(dir, source.relativePath)
+    const info = await probeMedia(sourcePath)
+    if (splitTime <= 0 || splitTime >= info.durationSec) {
+      throw new Error('The split point must fall inside the clip.')
+    }
+
+    const baseName = path.basename(source.originalName, path.extname(source.originalName))
+    const partA = await this.renderDerivedAudioAsset(
+      dir,
+      sourcePath,
+      { ...defaultAudioEditSpec(info.durationSec), trimStart: 0, trimEnd: splitTime },
+      `${baseName} (part 1)`,
+    )
+    const partB = await this.renderDerivedAudioAsset(
+      dir,
+      sourcePath,
+      { ...defaultAudioEditSpec(info.durationSec), trimStart: splitTime, trimEnd: info.durationSec },
+      `${baseName} (part 2)`,
+    )
+
+    const updated = [...assets, partA, partB]
+    await this.writeAssets(dir, updated)
+    await touchProject(dir)
+    return updated
+  }
+
+  private async renderDerivedAudioAsset(
+    dir: string,
+    sourcePath: string,
+    spec: AudioEditSpec,
+    displayBaseName: string,
+  ): Promise<Asset> {
+    const newId = randomUUID()
+    const storedFileName = `${newId}.m4a`
+    const relativePath = path.join('assets', 'audio', storedFileName)
+    await renderAudioEdit(sourcePath, path.join(dir, relativePath), spec)
+    const stat = await fs.stat(path.join(dir, relativePath))
+    return {
+      id: newId,
+      originalName: `${displayBaseName}.m4a`,
+      storedFileName,
+      kind: 'audio',
+      sizeBytes: stat.size,
+      importedAt: new Date().toISOString(),
+      relativePath,
+    }
   }
 
   private async readAssets(dir: string): Promise<Asset[]> {

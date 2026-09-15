@@ -1219,6 +1219,111 @@ multi-track mixing yet; add those later only if actually wanted.
   separates "live interactive preview" from "the real FFmpeg-rendered
   result" (chroma key, the reverse-preview proxy).
 
+**BUILT (2026-09-15), matches the scope above — not yet confirmed by Dan's
+own hands.** New files, following this app's established one-manager/one-
+FFmpeg-call-site-per-concern shape:
+- `electron/audioEditTypes.ts` — the renderer-safe `AudioEditSpec` shape
+  (trim range, fade in/out duration+curve, an `EnvelopePoint[]` volume
+  automation list, normalize mode), plus the exposed subset of FFmpeg's real
+  `afade` curve names (Linear/Quarter Sine/Half Sine/Logarithmic/Parabola/
+  Quadratic/Cubic/Square Root) — same zero-Node-imports pattern as
+  `editorTypes.ts`/`sfxTypes.ts`, so the renderer imports the curve/mode
+  constant arrays directly instead of duplicating them.
+- `electron/audioEditRenderer.ts` — the one FFmpeg call site (mirrors
+  `audioExtractor.ts`): builds one `-af` chain (`atrim` → normalize →
+  volume-automation `eval=frame` expression → `afade` in/out with the
+  chosen curve) and runs it. Peak normalize runs a real `volumedetect`
+  measurement pass first (FFmpeg has no single filter that normalizes to
+  peak); loudness normalize uses a single-pass `loudnorm=I=-16:TP=-1.5:
+  LRA=11` (EBU R128), which is self-analyzing.
+- `electron/projectManager.ts` gained `commitAudioEdit`/`splitAudioAsset`,
+  mirroring `extractAudioAsset`'s exact non-destructive shape — resolve the
+  source asset (rejecting anything that isn't `kind: 'audio'`), render into
+  a brand-new `assets/audio/<newId>.m4a`, push it into `assets.json`,
+  return the full updated list. `splitAudioAsset` calls the same renderer
+  twice (a plain trim spec on each half) rather than a second FFmpeg path.
+  The source file is only ever read, never opened for writing, in either
+  method.
+- `src/audioEditPreview.ts` — pure Web Audio helpers for the live preview:
+  fade-curve shape functions (a documented **good-faith approximation** of
+  FFmpeg's curve shapes — unlike `chromaKey.ts`, this was NOT pixel/sample
+  verified against real FFmpeg output byte-for-byte, see the file's header
+  for why that felt like disproportionate rigor for a preview-only cosmetic
+  approximation), envelope linear-interpolation (this part IS exact — both
+  the preview's `linearRampToValueAtTime` scheduling and the FFmpeg
+  renderer's piecewise-linear expression use the same plain linear math),
+  real peak-gain computation straight from the decoded `AudioBuffer` (no
+  FFmpeg round-trip needed for the preview's Peak mode, since the exact
+  samples are already in memory), and waveform min/max peak downsampling
+  for drawing.
+- `src/components/AudioEditor.tsx` — the modal itself: a waveform canvas
+  (click-drag range selection, zoom, trim-range/playhead highlighting) with
+  an envelope strip canvas beneath it (click to add a volume-automation
+  point, drag to move one, or edit points via a numeric list), Trim/Split/
+  Fade/Normalize/Envelope controls, Play/Stop against a real Web Audio
+  graph (`source → fades gain → envelope gain → normalize-preview gain →
+  destination`), and a commit button that calls the new
+  `commitAudioEdit`/`splitAudioAsset` IPC methods. Loudness-mode normalize
+  has no accurate in-browser preview (EBU R128 needs multi-band gated
+  analysis, out of scope for a live preview) — documented as a
+  simplification in the UI itself ("the live preview plays unnormalized for
+  this mode"), same "preview approximates, FFmpeg render is authoritative"
+  philosophy as chroma key/reverse-preview.
+- `src/components/MediaLibraryCard.tsx` gained an `onEditAudio` prop and a
+  new "✏️ Edit Audio" button, shown only when `entry.kind === 'audio'`;
+  `src/components/MediaLibrary.tsx` holds the "which entry is open" state
+  and renders `AudioEditor` as a modal, refreshing the grid on commit so
+  the new derived asset shows up immediately.
+- Wired through `electron/main.ts` (`assets:commitAudioEdit`/
+  `assets:splitAudio`), `electron/preload.ts`, and `src/api.d.ts`, exactly
+  like every other manager method in this app.
+
+**Verification status:**
+- Confirmed working on this machine: `npm run typecheck` and `npm run
+  build` both succeed (renderer + main process).
+- Confirmed working on this machine, via a new scripted integration test
+  (`scripts/verifyAudioEditor.cjs`, run through the real Electron runtime
+  against the real bundled FFmpeg, same pattern as every prior phase's
+  manager-level verification) — **22/22 assertions passed**: a non-audio
+  asset is rejected; an invalid (inverted) trim range is rejected; trimming
+  produces a correctly-durationed new asset while the source file's bytes
+  are provably unchanged (SHA-256 hash compared before/after, for both a
+  commit and a split); a 1s linear fade in/out measurably quiets the clip's
+  edges relative to its middle (`volumedetect`-measured, >6dB difference);
+  a 3-point quiet/loud/quiet volume envelope is clearly audible in the
+  rendered output (>12dB difference between the peak and its neighboring
+  quiet points); peak normalize brings a deliberately-quiet source's
+  measured peak to within 1dB of 0 dBFS; loudness normalize brings a
+  single-pass `loudnorm` re-measurement of the output to within 2.5 LU of
+  the -16 LUFS target; splitting produces two independent, correctly
+  proportioned new assets with the source untouched; a split point at
+  exactly 0 or past the clip's end is rejected.
+- **Not yet run successfully: a scripted Playwright UI pass.** A script was
+  written (`scripts/verifyAudioEditorUI.cjs`, same isolated-library
+  technique as `verifyStyleAndPhase8UI.cjs`: seeds a real audio asset
+  directly on disk rather than driving the native file picker, opens the
+  Media Library, clicks "✏️ Edit Audio," confirms the waveform canvas
+  actually decoded and rendered, edits a couple of fields, commits, and
+  confirms a second asset card appears with the original file's hash
+  unchanged) but launching a real Electron window under Playwright
+  automation in this session's environment hung indefinitely with no
+  output (killed after several minutes; a stray, unrelated-looking
+  `electron.exe` cluster using the plain default userData path was found
+  running afterward and cleaned up — confirmed it held no real project
+  data, since this sandbox has no `Documents/Dan's Video Studio` folder at
+  all). Did not keep retrying given how much this round already covered —
+  this is a real gap, not a false "confirmed." **So: the actual React/DOM
+  wiring (the button only appearing on audio cards, the modal actually
+  opening, canvas/mouse interactions, the commit button really producing a
+  visible new card) has only been read-reviewed, not exercised by any
+  automated pass this round** — on top of, as always, needing Dan's own
+  hands-on click-through with a real audio file before this is considered
+  confirmed. **Audio Editor stays the current objective** until at least
+  one of those two things happens.
+- **Still not done / not asked for this round, per the explicit scope
+  call:** pitch/tempo shift, noise reduction, multi-track mixing — all
+  deliberately deferred, per Dan's "start with 1 tier" call above.
+
 **NEW, PRIORITY (2026-09-14), being built in parallel while Dan tests
 Phase 7: a Style tab, plus Phase 8 (Smarter Assistance) built around it.**
 Scoped in a chat conversation while Phase 7 was in progress — not tested

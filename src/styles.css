@@ -1049,6 +1049,24 @@ body {
   font-style: italic;
 }
 
+.media-card__action {
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.media-card__action:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* Video Editor (Phase 6) */
 
 .editor-view {
@@ -1593,4 +1611,62 @@ body {
 .export-progress code {
   font-size: 11px;
   word-break: break-all;
+}
+
+/* Audio Editor (2026-09-15) */
+
+.audio-editor {
+  width: 760px;
+}
+
+.audio-editor__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 75vh;
+  overflow-y: auto;
+}
+
+.audio-editor__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.audio-editor__scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.audio-editor__waveform {
+  display: block;
+  cursor: crosshair;
+}
+
+.audio-editor__envelope-strip {
+  display: block;
+  cursor: pointer;
+  border-top: 1px solid var(--border);
+}
+
+.audio-editor__columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.audio-editor__envelope-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.audio-editor__envelope-row {
+  align-items: flex-end;
+}
+
+.audio-editor__envelope-row .btn--danger {
+  flex: 0 0 auto;
 }

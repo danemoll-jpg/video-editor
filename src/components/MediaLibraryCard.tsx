@@ -19,10 +19,11 @@ const USAGE_ICONS: Record<MediaLibraryEntry['usages'][number]['type'], string> =
 
 interface Props {
   entry: MediaLibraryEntry
+  onEditAudio: (entry: MediaLibraryEntry) => void
 }
 
 /** One asset in the Media Library — its own metadata plus every place it's actually used, cross-referenced from Scenes & Shots, the Prompt Labs, and the SFX library. */
-export default function MediaLibraryCard({ entry }: Props) {
+export default function MediaLibraryCard({ entry, onEditAudio }: Props) {
   return (
     <div className="media-card">
       <div className="media-card__header">
@@ -37,6 +38,16 @@ export default function MediaLibraryCard({ entry }: Props) {
       <div className="media-card__meta">
         {formatBytes(entry.sizeBytes)} · Imported {formatDate(entry.importedAt)}
       </div>
+
+      {entry.kind === 'audio' && (
+        <button
+          className="media-card__action"
+          title="Open the waveform editor — trim/split, fades, volume automation, normalize (always saves as a new asset)"
+          onClick={() => onEditAudio(entry)}
+        >
+          ✏️ Edit Audio
+        </button>
+      )}
 
       {entry.sfxTags.length > 0 && (
         <span className="tag-list">

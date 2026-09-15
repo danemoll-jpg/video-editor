@@ -25,6 +25,7 @@ import type { AddClipInput, ClipUpdates } from './editorManager'
 import type { ExportProgress, ExportRange, GifExportOptions, StillFrameOptions } from './videoExportManager'
 import type { ProjectSettings, Timeline, TrackType } from './editorTypes'
 import type { LibraryLocation, RelocateLibraryResult } from './libraryRelocationManager'
+import type { AudioEditSpec } from './audioEditTypes'
 
 const api = {
   listProjects: (): Promise<ProjectSummary[]> => ipcRenderer.invoke('projects:list'),
@@ -39,6 +40,10 @@ const api = {
     ipcRenderer.invoke('assets:delete', projectId, assetId),
   extractAudioAsset: (projectId: string, assetId: string): Promise<Asset[]> =>
     ipcRenderer.invoke('assets:extractAudio', projectId, assetId),
+  commitAudioEdit: (projectId: string, assetId: string, spec: AudioEditSpec): Promise<Asset[]> =>
+    ipcRenderer.invoke('assets:commitAudioEdit', projectId, assetId, spec),
+  splitAudioAsset: (projectId: string, assetId: string, splitTime: number): Promise<Asset[]> =>
+    ipcRenderer.invoke('assets:splitAudio', projectId, assetId, splitTime),
 
   getIdea: (projectId: string): Promise<Idea> => ipcRenderer.invoke('idea:get', projectId),
   saveIdea: (projectId: string, content: string): Promise<Idea> =>

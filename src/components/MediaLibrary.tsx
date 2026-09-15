@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { AssetKind, ExportFile, MediaLibraryEntry } from '../api'
 import { formatBytes, formatDate } from '../format'
 import MediaLibraryCard from './MediaLibraryCard'
+import AudioEditor from './AudioEditor'
 
 interface Props {
   projectId: string
@@ -36,6 +37,7 @@ export default function MediaLibrary({ projectId }: Props) {
   const [query, setQuery] = useState('')
   const [kindFilter, setKindFilter] = useState<KindFilter>('all')
   const [onlyUnused, setOnlyUnused] = useState(false)
+  const [editingEntry, setEditingEntry] = useState<MediaLibraryEntry | null>(null)
 
   async function refresh() {
     setLoading(true)
@@ -114,7 +116,7 @@ export default function MediaLibrary({ projectId }: Props) {
       ) : (
         <div className="media-grid">
           {filtered.map((entry) => (
-            <MediaLibraryCard key={entry.id} entry={entry} />
+            <MediaLibraryCard key={entry.id} entry={entry} onEditAudio={setEditingEntry} />
           ))}
         </div>
       )}
@@ -141,6 +143,15 @@ export default function MediaLibrary({ projectId }: Props) {
           </div>
         )}
       </section>
+
+      {editingEntry && (
+        <AudioEditor
+          projectId={projectId}
+          entry={editingEntry}
+          onClose={() => setEditingEntry(null)}
+          onCommitted={refresh}
+        />
+      )}
     </div>
   )
 }

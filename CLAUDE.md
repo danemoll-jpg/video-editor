@@ -68,7 +68,11 @@ browser treating it as cross-origin.
   "Extract Audio" asset action), and `electron/reverseProxyManager.ts` (a
   third FFmpeg call site — renders a clip's reverse live-preview proxy;
   `EditorManager`'s "Reverse live-preview proxies" section owns *when* one
-  gets (re)generated/deleted, this file only knows *how* to render one).
+  gets (re)generated/deleted, this file only knows *how* to render one),
+  and `electron/audioEditRenderer.ts` (a fourth FFmpeg call site — the
+  Audio Editor's committed render; `ProjectManager`'s `commitAudioEdit`/
+  `splitAudioAsset` own *when*/*as what asset*, this file only knows *how*
+  to build the `-af` chain and run it).
   Library relocation splits the same way:
   `electron/libraryLocation.ts` is pure preference-reading (where the
   library currently lives — a small JSON file under Electron's userData
@@ -86,10 +90,11 @@ browser treating it as cross-origin.
   `electron/shotStatus.ts` (the fixed shot-status sequence and labels),
   `electron/promptLabTypes.ts` (Grok/Suno rating dimensions and lab
   labels), `electron/sfxTypes.ts` (SFX source labels and rating
-  dimensions), and `electron/editorTypes.ts` (the timeline/clip/transition
-  shape and a few fixed lookup tables) have no Node/Electron imports, so the
-  renderer imports them directly instead of duplicating that data — see
-  each file's header comment.
+  dimensions), `electron/editorTypes.ts` (the timeline/clip/transition
+  shape and a few fixed lookup tables), and `electron/audioEditTypes.ts`
+  (the Audio Editor's `AudioEditSpec`/fade-curve/normalize-mode shapes)
+  have no Node/Electron imports, so the renderer imports them directly
+  instead of duplicating that data — see each file's header comment.
 - **State management:** plain React `useState`/`useEffect` per component,
   no global store yet. `src/App.tsx` holds the one piece of cross-component
   state (which project is open) and passes it down. Reassess if/when a later
@@ -141,14 +146,35 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
-**NEW (2026-09-15), scoped and ready: Audio Editor within the Media
-Library, "solid waveform editor" tier only** (trim/split, fade with real
-curve shapes, volume automation, normalize — deliberately not pitch/tempo
-shift, noise reduction, or multi-track mixing). Non-destructive (new asset,
-never overwrites the original), live preview via Web Audio API, real
-output rendered through FFmpeg on commit — same split that worked for
-chroma key. See TODO.md's Current Objective for full scope — not yet
-built.
+**Audio Editor within the Media Library, "solid waveform editor" tier —
+BUILT (2026-09-15), not yet confirmed by Dan's own hands.** A new
+"✏️ Edit Audio" action on an audio asset's card in the Media Library
+(`MediaLibraryCard.tsx`) opens `AudioEditor.tsx`: a waveform canvas (zoom,
+click-drag range selection) with an envelope strip beneath it, plus Trim/
+Split/Fade (adjustable duration and curve shape — Linear/Quarter Sine/Half
+Sine/Logarithmic/Parabola/Quadratic/Cubic/Square Root, a subset of FFmpeg's
+real `afade` curves)/Normalize (peak or EBU R128 loudness) controls and a
+real Web Audio (`AudioContext`/`AudioBufferSourceNode`/`GainNode`) live
+preview. Non-destructive by construction, same as every other asset
+operation: new `electron/projectManager.ts` methods `commitAudioEdit`/
+`splitAudioAsset` mirror `extractAudioAsset`'s exact shape (source file
+only ever read, a brand-new `assets/audio/<id>.m4a` written and pushed
+into `assets.json`). The actual FFmpeg render is a new one-call-site file,
+`electron/audioEditRenderer.ts` (chains `atrim` → normalize → a
+volume-automation `eval=frame` expression built from the envelope points →
+`afade` in/out) — `electron/audioEditTypes.ts` holds the renderer-safe
+`AudioEditSpec`/curve/mode shapes, same zero-Node-imports pattern as
+`editorTypes.ts`. `src/audioEditPreview.ts` holds the live preview's pure
+Web Audio helpers (fade-curve shapes are a documented good-faith
+approximation of FFmpeg's real curves, not pixel-verified like
+`chromaKey.ts`; the envelope's linear interpolation and Peak-mode preview
+gain, computed straight from the decoded `AudioBuffer`, are exact). See
+TODO.md's Current Objective for the full built/verification writeup — a
+new scripted FFmpeg integration test (`scripts/verifyAudioEditor.cjs`)
+passed 22/22 real assertions, but a Playwright UI pass could not be
+completed this round (the automated Electron launch hung in this session's
+environment), so the actual React/DOM wiring is unverified by automation,
+on top of needing Dan's own hands-on pass.
 
 **NEW, PRIORITY (2026-09-14/15), Style tab + Phase 8 built while Dan tests
 Phase 7 — not yet confirmed by Dan's own hands.** A new Style tab (mirrors

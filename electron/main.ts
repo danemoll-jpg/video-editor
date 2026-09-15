@@ -20,6 +20,7 @@ import { LibraryRelocationManager } from './libraryRelocationManager'
 import type { ProjectSettings, TrackType } from './editorTypes'
 import type { ShotStatus } from './shotStatus'
 import type { PromptLabKind } from './promptLabTypes'
+import type { AudioEditSpec } from './audioEditTypes'
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL
 
@@ -116,6 +117,15 @@ ipcMain.handle('assets:delete', (_e, projectId: string, assetId: string) =>
 
 ipcMain.handle('assets:extractAudio', (_e, projectId: string, assetId: string) =>
   projectManager.extractAudioAsset(projectId, assetId),
+)
+
+// Audio Editor (2026-09-15) — non-destructive: both handlers below always
+// produce a brand-new audio asset, never touching the source file.
+ipcMain.handle('assets:commitAudioEdit', (_e, projectId: string, assetId: string, spec: AudioEditSpec) =>
+  projectManager.commitAudioEdit(projectId, assetId, spec),
+)
+ipcMain.handle('assets:splitAudio', (_e, projectId: string, assetId: string, splitTime: number) =>
+  projectManager.splitAudioAsset(projectId, assetId, splitTime),
 )
 
 // --- IPC: idea ------------------------------------------------------------

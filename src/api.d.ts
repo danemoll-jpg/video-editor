@@ -34,6 +34,7 @@ import type {
   StillImageFormat,
 } from '../electron/videoExportManager'
 import type { LibraryLocation, RelocateLibraryResult } from '../electron/libraryRelocationManager'
+import type { AudioEditSpec, EnvelopePoint, FadeCurve, NormalizeMode } from '../electron/audioEditTypes'
 import type {
   Clip,
   ClipKind,
@@ -90,6 +91,10 @@ export type {
   StillImageFormat,
   LibraryLocation,
   RelocateLibraryResult,
+  AudioEditSpec,
+  EnvelopePoint,
+  FadeCurve,
+  NormalizeMode,
   Clip,
   ClipKind,
   ChromaKey,
@@ -126,6 +131,8 @@ declare global {
       importAssets(projectId: string): Promise<Asset[]>
       deleteAsset(projectId: string, assetId: string): Promise<Asset[]>
       extractAudioAsset(projectId: string, assetId: string): Promise<Asset[]>
+      commitAudioEdit(projectId: string, assetId: string, spec: AudioEditSpec): Promise<Asset[]>
+      splitAudioAsset(projectId: string, assetId: string, splitTime: number): Promise<Asset[]>
 
       getIdea(projectId: string): Promise<Idea>
       saveIdea(projectId: string, content: string): Promise<Idea>
