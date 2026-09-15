@@ -146,6 +146,16 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
+**NEW, five items from Dan actually using the editor (2026-09-15):** (1)
+a real bug — the playhead doesn't move at all, no visible cursor, no
+click-to-seek. (2-3) real sliders needed throughout (trim/fade/split, and
+volume envelope points), not just numeric fields. (4) a dB/amplitude
+vertical axis on the waveform, alongside the existing time axis. (5) once
+sliders make it easy to push a point into clipping, re-verify the
+already-built clipping indicator against a real user action, not just
+last round's scripted test. See TODO.md's Current Objective for full
+detail — none of these are built yet.
+
 **Three items from Dan actually using the now-visible waveform — BUILT
 (2026-09-15), not yet confirmed by Dan's own hands.** (1) The real
 renderer-crash bug ("Aw, Snap!") at extreme zoom on a long file — the

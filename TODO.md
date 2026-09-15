@@ -1191,6 +1191,41 @@ decided — its live preview was already correct via a CSS flip.
 
 Current Objective (Focus Area)
 
+**NEW, five items from Dan actually using the editor with the waveform
+now visible (2026-09-15) — some overlap, scoped together:**
+
+1. **BUG: the playhead doesn't move at all.** No visible cursor tracks
+   playback position, and there's no way to click on the waveform to seek
+   — only click-drag for selecting a trim range exists today. Fix:
+   render a real, visible playhead line on the waveform; update its
+   position in real time during playback (synced to actual Web Audio
+   playback time, not just the static "Playhead X.XXs" text readout);
+   and add click-to-seek — a plain click (not a drag) on the waveform
+   moves the playhead there and sets where the next Play starts from.
+2. **Add real sliders, not just numeric text fields, for everything
+   adjustable.** Trim start/end, fade in/out duration, and the split
+   point should each get a slider (paired with the existing numeric
+   field, not replacing it — both together is the usual, most usable
+   pattern) bound to sensible real ranges (e.g. trim/split sliders bound
+   to the clip's actual duration).
+3. **Volume envelope points need a slider too, not just the numeric
+   list.** When a point is selected, expose a slider to adjust its value
+   directly (in addition to dragging the point on the envelope strip
+   itself, which already works) — makes fine adjustment and intentionally
+   pushing a point up into clipping range much easier than typing exact
+   numbers.
+4. **Add a dB/amplitude vertical axis to the waveform**, complementing
+   the time axis and clipping indicator already built — real gridlines
+   (e.g. 0, -6, -12, -24, -48 dB) so amplitude is visually readable, not
+   just inferable from waveform height alone.
+5. **Related to items 3-4, not a separate ask:** Dan couldn't easily
+   confirm the clipping indicator works on a real file because there was
+   no easy way to push volume up far enough to clip — once item 3's
+   slider makes deliberately overdriving a point trivial, re-verify the
+   already-built red clipping indicator actually shows up on a real user
+   action, not just the prior round's scripted/synthetic overdriven-file
+   test.
+
 **NEW, three items found by Dan actually using the now-visible waveform
 (2026-09-15):**
 
