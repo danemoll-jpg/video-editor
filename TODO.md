@@ -1191,9 +1191,19 @@ decided — its live preview was already correct via a CSS flip.
 
 Current Objective (Focus Area)
 
-**NEW, PRIORITY (2026-09-14), jumps ahead of Phase 7 (consistent with
-every recent feature — not re-asked this time, but noted for the record):
-two fixes to the scene/shot outline generator, found via Dan's real use.**
+**Both scene/shot outline generator fixes CONFIRMED by Dan (2026-09-14),
+working as expected.** Item 1 (verbatim script-detail preservation) and
+item 2 (shot → Grok prompt: composed request lands unsent in the AI
+Assistant composer for review, response auto-inserts into the prompt
+field once Dan sends it, Idea notes pulled in as style/rules context) are
+both closed. This was the last item blocking progress — **Phase 7 (Export
+Tools) is now current.**
+
+**Phase 7 — Export Tools.** MP4, GIF, still-frame, and clip exports as
+first-class features (GIF maker: select part of a clip/timeline → choose
+dimensions/FPS/quality/looping — not buried in a submenu). Builds on
+Phase 6's existing FFmpeg plumbing (`videoRuntime.ts`, `videoExportManager.ts`)
+rather than needing new infrastructure.
 
 1. **Preserve structured script detail verbatim instead of summarizing it
    away.** **CONFIRMED by Dan (2026-09-14), working.** Dan's real script
@@ -2242,32 +2252,49 @@ Claude.ai chat.
 
 Next Steps (Do Not Start Yet)
 
-Full phased roadmap, in order — Phase 6 (Video Editor, above) is now
+Full phased roadmap, in order — Phase 7 (Export Tools, above) is now
 current; each phase below stays deferred until the prior one is
 functional:
 
-1. **Phase 7 — Export Tools** *(originally Phase 6).* MP4, GIF,
-   still-frame, and clip exports as first-class features (GIF maker: select
-   part of a clip/timeline → choose dimensions/FPS/quality/looping — not
-   buried in a submenu).
-2. **Phase 8 — Smarter Assistance** *(originally Phase 7).* Use the
+1. **Phase 8 — Smarter Assistance** *(originally Phase 7).* Use the
    accumulated Grok/Suno/SFX prompt history to recommend techniques based on
    what's actually worked before, rather than generating cold suggestions
    each time. Considered the most distinctive long-term feature of the
    whole project — and now directly builds on Phase 4's AI Assistant/API
    plumbing rather than needing its own from scratch.
-3. **Audio editor within the Media Library.** DEFERRED (2026-09-13), not
+2. **Audio editor within the Media Library.** DEFERRED (2026-09-13), not
    decided against — Dan explicitly flagged this as "not necessarily now,"
    a future idea rather than something to scope immediately. Not yet
    detailed: what actual editing it should support (trim/fade/volume/
    normalize on an audio asset directly from its Media Library card, versus
    something closer to a full waveform editor) hasn't been discussed.
    Scope this properly when Dan wants to pick it up.
+3. **An iPad-usable version of the planning/scripting side** (Idea,
+   Script, Scenes & Shots, Prompt Lab — explicitly not the video editor or
+   heavy media files, which would stay desktop-only). Raised 2026-09-14;
+   **DEFERRED, "keep it as an idea for later," explicitly NOT decided to
+   proceed** — Dan chose not to formally reverse the standing "no
+   cloud/no mobile" decision below yet. Worth remembering if this does get
+   picked up later: it's a genuinely different scope of undertaking than
+   everything else in this roadmap — not a feature addition to the
+   existing Electron app, but a second, separate front-end (Electron
+   doesn't run on iPadOS at all) backed by a real hosted database/API for
+   sync, which is a new ongoing cost and a new class of problem (what
+   happens when the same project is edited on both devices) this project
+   hasn't had to deal with before. Revisit and properly scope only if/when
+   Dan actually wants to move on it — don't let it half-live here as a
+   vague someday item. **Re-added 2026-09-14 after this item was found
+   missing from a file upload — worth double-checking future uploads
+   against what's expected to be here, since this isn't the first time a
+   scoped addition didn't make it into what came back from a coding
+   round.**
 
 **DECIDED: explicitly out of scope, indefinitely** (not "later," genuinely
 declined) — cloud service, mobile app, social/collaboration features, a
 CapCut-style template marketplace, hundreds of filters, built-in
 Grok/Suno generation via API, and any "gigantic AI suite" scope expansion.
+**Still stands as of 2026-09-14** — the iPad idea above was raised and
+explicitly not chosen to reverse this, see item 3.
 
 Technical Notes / Blockers
 

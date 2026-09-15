@@ -137,6 +137,12 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
+**Both scene/shot outline generator fixes CONFIRMED by Dan (2026-09-14),
+working as expected.** Closed. **Phase 7 (Export Tools) is now current** —
+MP4/GIF/still-frame/clip export as first-class features, building on
+Phase 6's existing FFmpeg plumbing rather than new infrastructure. See
+TODO.md's Current Objective.
+
 **Two fixes to the scene/shot outline generator**, found from Dan's real
 use. (1) The outline generator's system prompt (`aiAssistantManager.ts`'s
 `SCENE_OUTLINE_SYSTEM_PROMPT`, now exported for scripted verification) now
