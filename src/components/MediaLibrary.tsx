@@ -32,6 +32,17 @@ export default function MediaLibrary({ projectId }: Props) {
   const [entries, setEntries] = useState<MediaLibraryEntry[]>([])
   const [exports, setExports] = useState<ExportFile[]>([])
   const [loading, setLoading] = useState(true)
+  // Tracks whether the *first* load has completed, separately from `loading`
+  // itself — `refresh()` is called again every time the Audio Editor commits
+  // or splits an asset (as its `onCommitted` callback), and re-gating the
+  // entire render behind a bare `loading` check on every one of those calls
+  // was unmounting the whole tree (including that same open Audio Editor
+  // modal) for the duration of the refetch, silently discarding its local
+  // state — e.g. the "✅ Saved as a new audio asset" confirmation never got
+  // to render, because the component showing it had already been torn down
+  // and remounted fresh by the time the fetch resolved. Only the initial
+  // mount's load should show the full-page loading state.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [query, setQuery] = useState('')
@@ -53,6 +64,7 @@ export default function MediaLibrary({ projectId }: Props) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
+      setHasLoadedOnce(true)
     }
   }
 
@@ -76,7 +88,7 @@ export default function MediaLibrary({ projectId }: Props) {
       .sort((a, b) => a.originalName.localeCompare(b.originalName))
   }, [entries, query, kindFilter, onlyUnused])
 
-  if (loading) return <p className="muted">Loading media library…</p>
+  if (loading && !hasLoadedOnce) return <p className="muted">Loading media library…</p>
 
   return (
     <div className="media-library">

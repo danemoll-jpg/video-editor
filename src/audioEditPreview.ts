@@ -110,7 +110,24 @@ export interface WaveformPeaks {
   max: Float32Array
 }
 
-/** Downsamples a decoded buffer's (mixed-to-mono) samples into one min/max pair per output column, at `pixelsPerSecond` resolution. */
+/**
+ * Downsamples a decoded buffer's samples into one min/max pair per output
+ * column, at `pixelsPerSecond` resolution — the envelope (extremes) across
+ * *all* channels' raw samples, not a channel-averaged/mixed-down signal.
+ *
+ * That distinction matters: an earlier version of this function averaged
+ * channels together first (`mixed = sum(channels)/count`) before tracking
+ * min/max. For a stereo file where channels are meaningfully out of phase —
+ * a real thing in some "widened"/M/S-processed stereo music and some
+ * mono-compatibility-broken exports, not just a contrived edge case — that
+ * averaging can partially or fully *cancel* the signal (in the limit,
+ * L = -R averages to exactly 0 at every sample), so the waveform drew as a
+ * flat/near-invisible line while actual stereo playback — separate L/R
+ * channels reaching separate speakers, never summed — sounded completely
+ * normal. Tracking extremes across raw per-channel samples (rather than a
+ * pre-summed signal) never has this failure mode, and is the standard way
+ * multi-channel waveforms are drawn.
+ */
 export function computeWaveformPeaks(buffer: AudioBuffer, pixelsPerSecond: number): WaveformPeaks {
   const totalColumns = Math.max(1, Math.ceil(buffer.duration * pixelsPerSecond))
   const min = new Float32Array(totalColumns)
@@ -125,11 +142,11 @@ export function computeWaveformPeaks(buffer: AudioBuffer, pixelsPerSecond: numbe
     let colMin = 1
     let colMax = -1
     for (let i = start; i < end && i < buffer.length; i++) {
-      let mixed = 0
-      for (const data of channelData) mixed += data[i]
-      mixed /= channelData.length
-      if (mixed < colMin) colMin = mixed
-      if (mixed > colMax) colMax = mixed
+      for (const data of channelData) {
+        const v = data[i]
+        if (v < colMin) colMin = v
+        if (v > colMax) colMax = v
+      }
     }
     if (colMin > colMax) {
       colMin = 0

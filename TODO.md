@@ -1192,25 +1192,109 @@ decided — its live preview was already correct via a CSS flip.
 Current Objective (Focus Area)
 
 **BUG, confirmed by Dan (2026-09-15): the waveform canvas renders
-completely blank.** Zoom controls are present and clickable, but nothing
-visual ever appears — no waveform, not even a flat line. **Critical
-diagnostic detail: audio playback works fine** (Play actually plays the
-clip), which means decoding via `AudioContext`/`decodeAudioData` is
-succeeding and a real `AudioBuffer` with real samples exists — this
-narrows the bug specifically to the waveform's drawing code path
-(`audioEditPreview.ts`'s peak-downsampling and `AudioEditor.tsx`'s canvas
-draw calls), not audio loading/decoding. Worth checking, in order: is the
-canvas element actually sized (a canvas with 0 width/height draws nothing
-even if the draw calls run correctly); is the draw function actually being
-invoked at all (a missed effect dependency, a ref not yet attached on
-first render — this app has hit exactly this class of bug before, see the
-first-mount timing note under the SFX/ElevenLabs typing bug in Technical
-Notes below); or a scaling/coordinate bug causing peaks to draw with
-effectively zero height or off-canvas. **This is genuinely the first real
-exercise this UI has gotten at all** (the Playwright pass hung and never
-completed last round) — don't assume anything else in the modal works
-correctly either; treat this as the first real signal, not an isolated
-one-off.
+completely blank — ROOT-CAUSED AND FIXED (2026-09-15, same day), plus a
+second, separate bug found and fixed while actually exercising the rest
+of the modal.** None of the three suspects this entry originally listed
+(canvas sizing, a missed-effect/first-mount race, a scaling/coordinate
+bug) turned out to be it — the real cause needed an actual repro, not more
+code reading.
+
+**Root cause: `audioEditPreview.ts`'s `computeWaveformPeaks` mixed
+multi-channel audio down to mono by summing the channels' raw signed
+samples and averaging.** For a stereo file where the channels are
+meaningfully out of phase — a real thing in some "widened"/M/S-processed
+stereo music and some mono-compatibility-broken exports, not a contrived
+edge case — that summing partially or fully *cancels* the signal (in the
+limit, a channel pair where right = -left averages to exactly 0 at every
+single sample). The waveform drew as a flat, invisible line for exactly
+that reason, while actual stereo *playback* — separate L/R channels
+reaching separate speakers, never summed together — sounded completely
+normal. This is the precise mechanism behind "playback fine, waveform
+blank": two genuinely different code paths (Web Audio's `AudioBufferSourceNode`
+routing L/R to separate outputs vs. this function's mono-mixdown math),
+not a timing race between them. Confirmed by building a deliberately
+anti-phase test file (a tone on the left channel, its exact inverse on the
+right) and checking the live app's actual canvas pixel data: before the
+fix, 140 non-background pixels out of 98,000 (just the playhead line —
+genuinely nothing else drawn); after, ~12,700, matching a normal file.
+**Fix:** track min/max across each channel's *raw* samples directly,
+never pre-summed — the standard way multi-channel waveforms are drawn,
+and it structurally cannot cancel. See `audioEditPreview.ts`'s updated
+header comment on `computeWaveformPeaks` for the full explanation.
+(`computePeakGain`, the Peak-normalize preview's gain calculation, was
+already correct — it takes `Math.abs()` per channel independently and was
+never affected.)
+
+**Second bug, found only because this round actually clicked all the way
+through the modal instead of stopping once the reported symptom was
+fixed, per the explicit ask not to assume the rest worked: committing an
+edit renders successfully, but the "✅ Saved as a new audio asset"
+confirmation never appears — the modal silently looks like nothing
+happened, even though the new asset really was created.** Root cause:
+`MediaLibrary.tsx`'s `refresh()` — called as the Audio Editor's
+`onCommitted` callback after every commit or split — sets `loading` to
+`true` while it refetches, and `MediaLibrary`'s top-level render had a
+bare `if (loading) return <p>Loading media library…</p>`. That early
+return replaces *the entire component tree* on every refresh, not just
+the first one — including the still-open Audio Editor modal sitting
+inside it, which gets unmounted and then remounted fresh (confirmed via
+temporary mount/unmount logging: `AudioEditor UNMOUNTED` immediately
+followed by `AudioEditor MOUNTED`, same `entry.id`, right after
+`commitAudioEdit` resolves) a moment after `setCommitted(true)` runs —
+discarding that state before React ever gets to paint it. The commit
+itself was never broken (the new asset was always written correctly,
+confirmed by the file existing with the right non-destructive hash
+guarantees intact); only the user-facing confirmation was silently
+eaten. **Fix:** `MediaLibrary.tsx` now tracks a separate `hasLoadedOnce`
+flag, and only shows the full-page loading replacement on the very first
+load — later refreshes update state without unmounting the rest of the
+tree, so an open modal (and its local state) survives a commit-triggered
+refresh. This also means the modal now *feels* right rather than merely
+looking fixed: no more flash-to-blank-page every time you commit or
+split from inside it.
+
+**Verification:** a new committed scripted Playwright UI pass,
+`scripts/clickThroughAudioEditor.cjs`, drives the real built Electron
+window and actually clicks through the whole modal this time — unlike
+last round's `verifyAudioEditorUI.cjs`, which only ever checked the
+waveform canvas's *width* attribute (proof it was sized, not proof
+anything was drawn on it) and never completed a run at all. This round's
+script checks real canvas pixel content (non-background pixel counts,
+not just dimensions) and exercises every control: waveform renders real
+content on open, Zoom +/− both resize the canvas and keep it rendering,
+click-drag range selection + "Trim to Selection," fade in/out duration
+and curve-dropdown changes, Normalize mode switching (including the
+Loudness mode's documented preview-simplification hint), envelope point
+add-via-button/add-via-click/remove/clear, Play/Stop, Split (producing
+two independent new assets), and Commit (producing a new asset, original
+file's hash unchanged, and now — with the fix — the success banner
+actually appearing). **24/24 assertions pass** against the real app with
+both fixes applied; re-ran with only the waveform fix and the commit
+banner assertion correctly failed, confirming the test actually
+distinguishes the two bugs rather than passing regardless. Real mouse
+drags (range selection, envelope-point placement) needed dispatching DOM
+mouse events directly rather than OS-level simulated input — this
+session's Playwright+Electron+HiDPI setup has the same coordinate-mapping
+quirk already documented under Phase 6's clip-trim-handle note, not a new
+finding. The pre-existing `scripts/verifyAudioEditor.cjs` (22 FFmpeg-side
+assertions) and `npm run typecheck`/`npm run build` were all re-confirmed
+passing after both fixes, so the render-side fix didn't touch the FFmpeg
+render path's own already-verified behavior. Playwright itself stays a
+non-permanent, ad-hoc dependency exactly like every prior UI-verification
+round (`npm install --no-save playwright` / `npm uninstall playwright`
+around the run).
+
+**Not yet done / genuinely still open:** no upper bound on the waveform
+canvas's pixel width as zoom increases on a long file — at extreme zoom
+on a multi-minute clip, `canvasWidth` (duration × pixels-per-second) could
+in principle exceed a browser's real canvas-size limits and blank out for
+an unrelated reason; not hit in this round's testing (all test clips were
+short) and not asked for, so left as a known theoretical edge rather than
+guessed at — flag if it ever actually shows up. Both fixes above still
+need **Dan's own hands-on pass** — his own real audio file(s), his own
+real click-through — before this is considered closed; per this
+project's normal pattern, **the Audio Editor stays the current
+objective** until that happens.
 
 **NEW (2026-09-15), scoped and ready — Audio Editor within the Media
 Library, "solid waveform editor" tier.** Previously deferred as a vague
@@ -1341,6 +1425,15 @@ FFmpeg-call-site-per-concern shape:
   hands-on click-through with a real audio file before this is considered
   confirmed. **Audio Editor stays the current objective** until at least
   one of those two things happens.
+  - **UPDATE (2026-09-15, later the same day): this Playwright pass now
+    runs successfully** — `scripts/clickThroughAudioEditor.cjs` replaces
+    the never-completed `verifyAudioEditorUI.cjs` above with a much more
+    thorough pass (real canvas pixel-content checks, every control
+    exercised, not just width/dimension checks) and found two real bugs
+    in the process — see this section's opening entries for the full
+    root-cause/fix/verification writeup. The React/DOM wiring this bullet
+    flagged as unexercised is now genuinely exercised; only Dan's own
+    hands-on pass remains open.
 - **Still not done / not asked for this round, per the explicit scope
   call:** pitch/tempo shift, noise reduction, multi-track mixing — all
   deliberately deferred, per Dan's "start with 1 tier" call above.

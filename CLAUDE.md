@@ -146,28 +146,42 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
-**BUG, confirmed by Dan (2026-09-15): waveform canvas renders completely
-blank**, though audio playback works fine — narrows the bug to the
-drawing code path (`audioEditPreview.ts` peak-downsampling /
-`AudioEditor.tsx` canvas draw calls), not audio decoding. This is the
-first real exercise the Audio Editor UI has gotten at all (last round's
-Playwright pass never completed), so don't assume the rest of the modal
-is fine either. See TODO.md's Current Objective for full diagnostic detail.
+**BUG, confirmed by Dan (2026-09-15): waveform canvas rendered completely
+blank — ROOT-CAUSED AND FIXED (2026-09-15, same day), not yet confirmed
+by Dan's own hands.** Cause: `audioEditPreview.ts`'s `computeWaveformPeaks`
+mixed multi-channel audio to mono by *summing* raw signed samples across
+channels before tracking min/max — for stereo audio with meaningfully
+out-of-phase channels (real in some "widened"/M/S-processed music), that
+summing cancels toward zero, so the waveform drew as an invisible flat
+line while actual stereo *playback* (separate L/R channels, never summed)
+sounded completely normal. Fixed by tracking min/max across each
+channel's raw samples directly, never pre-summed. While actually
+exercising the rest of the modal (not just the reported symptom, per the
+ask), also found and fixed a second bug: `MediaLibrary.tsx`'s `refresh()`
+(called after every commit/split) gated the *entire* render behind a bare
+`loading` check, so it unmounted and remounted the still-open Audio Editor
+modal on every commit — discarding the "✅ Saved as a new audio asset"
+confirmation before it could ever paint, even though the save itself
+always worked. See TODO.md's Current Objective for the full root-cause/
+fix/verification writeup, including the new `scripts/clickThroughAudioEditor.cjs`
+that actually completed a full Playwright click-through of the whole
+modal this round (last round's `verifyAudioEditorUI.cjs` never did).
 
 **Audio Editor within the Media Library, "solid waveform editor" tier —
-BUILT (2026-09-15), not yet confirmed by Dan's own hands.** A new
-"✏️ Edit Audio" action on an audio asset's card in the Media Library
-(`MediaLibraryCard.tsx`) opens `AudioEditor.tsx`: a waveform canvas (zoom,
-click-drag range selection) with an envelope strip beneath it, plus Trim/
-Split/Fade (adjustable duration and curve shape — Linear/Quarter Sine/Half
-Sine/Logarithmic/Parabola/Quadratic/Cubic/Square Root, a subset of FFmpeg's
-real `afade` curves)/Normalize (peak or EBU R128 loudness) controls and a
-real Web Audio (`AudioContext`/`AudioBufferSourceNode`/`GainNode`) live
-preview. Non-destructive by construction, same as every other asset
-operation: new `electron/projectManager.ts` methods `commitAudioEdit`/
-`splitAudioAsset` mirror `extractAudioAsset`'s exact shape (source file
-only ever read, a brand-new `assets/audio/<id>.m4a` written and pushed
-into `assets.json`). The actual FFmpeg render is a new one-call-site file,
+BUILT (2026-09-15), both bugs above fixed the same day, not yet confirmed
+by Dan's own hands.** A new "✏️ Edit Audio" action on an audio asset's
+card in the Media Library (`MediaLibraryCard.tsx`) opens `AudioEditor.tsx`:
+a waveform canvas (zoom, click-drag range selection) with an envelope
+strip beneath it, plus Trim/Split/Fade (adjustable duration and curve
+shape — Linear/Quarter Sine/Half Sine/Logarithmic/Parabola/Quadratic/
+Cubic/Square Root, a subset of FFmpeg's real `afade` curves)/Normalize
+(peak or EBU R128 loudness) controls and a real Web Audio (`AudioContext`/
+`AudioBufferSourceNode`/`GainNode`) live preview. Non-destructive by
+construction, same as every other asset operation: new
+`electron/projectManager.ts` methods `commitAudioEdit`/`splitAudioAsset`
+mirror `extractAudioAsset`'s exact shape (source file only ever read, a
+brand-new `assets/audio/<id>.m4a` written and pushed into `assets.json`).
+The actual FFmpeg render is a new one-call-site file,
 `electron/audioEditRenderer.ts` (chains `atrim` → normalize → a
 volume-automation `eval=frame` expression built from the envelope points →
 `afade` in/out) — `electron/audioEditTypes.ts` holds the renderer-safe
@@ -175,14 +189,17 @@ volume-automation `eval=frame` expression built from the envelope points →
 `editorTypes.ts`. `src/audioEditPreview.ts` holds the live preview's pure
 Web Audio helpers (fade-curve shapes are a documented good-faith
 approximation of FFmpeg's real curves, not pixel-verified like
-`chromaKey.ts`; the envelope's linear interpolation and Peak-mode preview
-gain, computed straight from the decoded `AudioBuffer`, are exact). See
-TODO.md's Current Objective for the full built/verification writeup — a
-new scripted FFmpeg integration test (`scripts/verifyAudioEditor.cjs`)
-passed 22/22 real assertions, but a Playwright UI pass could not be
-completed this round (the automated Electron launch hung in this session's
-environment), so the actual React/DOM wiring is unverified by automation,
-on top of needing Dan's own hands-on pass.
+`chromaKey.ts`; the envelope's linear interpolation, the waveform's
+per-channel min/max peak downsampling, and Peak-mode preview gain,
+computed straight from the decoded `AudioBuffer`, are exact). See
+TODO.md's Current Objective for the full built/verification writeup — the
+scripted FFmpeg integration test (`scripts/verifyAudioEditor.cjs`, 22/22)
+and a new full scripted Playwright click-through
+(`scripts/clickThroughAudioEditor.cjs`, 24/24 — waveform render, zoom,
+range selection, split, fade/curve/normalize controls, envelope points,
+play/stop, and commit) both pass against the real built app, on top of
+`npm run typecheck`/`npm run build`. Still needs Dan's own hands-on pass
+before this is considered confirmed.
 
 **NEW, PRIORITY (2026-09-14/15), Style tab + Phase 8 built while Dan tests
 Phase 7 — not yet confirmed by Dan's own hands.** A new Style tab (mirrors
