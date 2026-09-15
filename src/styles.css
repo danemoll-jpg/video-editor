@@ -1635,7 +1635,18 @@ body {
 }
 
 .audio-editor__scroll {
+  /* flex-shrink: 0 + the explicit overflow-y (rather than leaving it to
+     default to auto, which strips flexbox's "automatic minimum size"
+     protection for scrollable items) is load-bearing: without it, this flex
+     item collapses to ~0px tall whenever the rest of .audio-editor__body's
+     content pushes past its 75vh max-height, taking the waveform/envelope
+     canvases down with it even though their own width/height attributes
+     stay correct — the exact "no visible waveform box" bug reported
+     2026-09-15, confirmed by checking getBoundingClientRect() rather than
+     canvas pixel content. */
+  flex-shrink: 0;
   overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid var(--border);
   border-radius: 6px;
 }

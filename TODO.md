@@ -1191,8 +1191,9 @@ decided — its live preview was already correct via a CSS flip.
 
 Current Objective (Focus Area)
 
-**BUG, STILL BROKEN after last round's fix (2026-09-15) — same "still no
-visual" result on Dan's real file** (`7 or 8 Hours, Give or Take.mp3`,
+**BUG — RESOLVED (2026-09-15, see below for this round's fix); was still
+broken after an earlier same-day fix** — that earlier round left "still no
+visual" on Dan's real file (`7 or 8 Hours, Give or Take.mp3`,
 230.16s, real project). Last round root-caused and fixed a real bug
 (stereo phase-cancellation in the mono-mixdown used for peak computation,
 proven with a pixel-count test: 140 → ~12,700 non-background pixels) and
@@ -1219,14 +1220,69 @@ pass even while the element is genuinely invisible on screen because it
 has no CSS height. Same file both times, ruling out a file-specific
 re-trigger of the old bug.
 
-**Next step: check the actual rendered CSS box size of the waveform/
-envelope canvas elements in the live DOM** (not just their HTML
-width/height attributes, which control drawing-surface resolution, a
-separate thing from on-screen CSS box size) — a missing explicit
-container height, a flex/grid child collapsing to 0 without an explicit
-height or `flex-shrink: 0`, or similar. Verify with something that would
-actually catch this class of bug this time — checking `getBoundingClientRect()`
-height in addition to pixel content, not pixel content alone.
+**RESOLVED (2026-09-15, same-day follow-up round) — root cause confirmed
+and fixed, this time verified against real on-screen element dimensions,
+not canvas pixel content.** The CSS/layout suspicion was correct.
+`.audio-editor__scroll` (the waveform+envelope canvases' direct parent, in
+`src/styles.css`) set only `overflow-x: auto`, with no `overflow-y`
+declared. Per the CSS spec, a `visible` value on one overflow axis paired
+with a non-`visible` value on the other computes to `auto` on the
+`visible` axis too — so this div was *actually* `overflow: auto auto`,
+not `overflow-x: auto; overflow-y: visible` as it read. That matters
+because it's a flex item (flex-direction: column) inside
+`.audio-editor__body`, which is itself capped at `max-height: 75vh` with
+its own `overflow-y: auto`. Once `.audio-editor__body`'s total content
+(toolbar + waveform/envelope + hint text + the Trim/Split/Fade/Normalize/
+Volume-Envelope sections below) exceeded 75vh, the flex column shrank its
+items to fit — and because `.audio-editor__scroll` had non-`visible`
+overflow on both axes, it lost flexbox's "automatic minimum size"
+protection (the rule that normally stops a flex item shrinking below its
+content's size) and was free to shrink all the way to ~0. The canvases
+inside kept their correct internal drawing surface AND their own
+`getBoundingClientRect()` height (confirmed 140px/71px, matching their
+width/height attributes) — they just had no visible parent box left to be
+seen through, clipped down to a sliver. This is exactly why last round's
+pixel-content check passed clean: it read the canvas's own drawing buffer,
+which was always fine, never the ancestor chain's rendered size.
+
+**Fix:** `.audio-editor__scroll` now sets `overflow-y: hidden` explicitly
+(closing off the accidental-auto loophole) and `flex-shrink: 0` (so it
+can never be shrunk below its content regardless of `.audio-editor__body`'s
+available height). Both `src/styles.css`, `.audio-editor__scroll` rule.
+
+**Verification, checking the thing that would have actually caught
+this:** new `scripts/verifyAudioEditorLayout.cjs` — a scripted Playwright
+pass seeding a real 230.16s audio asset (matching Dan's actual file's
+duration) in a real 1280×800 window (`main.ts`'s own default size, not an
+oversized test viewport that would hide a shrink-driven collapse), then
+reading `getBoundingClientRect()` on the live DOM for the waveform canvas,
+envelope canvas, and their `.audio-editor__scroll` parent — not
+`getImageData()`, not the `width`/`height` attributes. Run against the
+pre-fix build first to confirm the bug actually reproduces this way:
+`.audio-editor__scroll` measured **2px tall** (both canvases inside still
+individually reported their correct 140px/71px `getBoundingClientRect()`
+height, clipped invisible by the collapsed parent — matching Dan's
+screenshot exactly). Rebuilt with the fix and reran the identical script:
+`.audio-editor__scroll` now measures **230px tall** (140 + 71 + borders),
+all 4 assertions pass. Playwright was installed ad-hoc for this pass
+(`npm install --no-save playwright`) and removed afterward, per this
+project's established pattern — same as `verifyAudioEditorUI.cjs`.
+`scripts/verifyAudioEditorLayout.cjs` is left committed alongside the
+other one-off verification scripts for any future layout regression in
+this modal. **Not yet done: Dan's own hands-on confirmation** that the
+waveform is now actually visible on his real file/machine.
+
+**Incidental fix while re-running the existing suite this round:**
+`scripts/verifyAudioEditorUI.cjs` (written last round, but per that
+round's own notes never actually completed — "the automated Electron
+launch hung in this session's environment") turned out to have two latent
+selector bugs of its own once it finally ran to completion: it targeted
+`.audio-editor__columns` (the single plural grid wrapper) with `nth=1`,
+which can never match since there's only one such element — the two
+things it actually wanted are `.audio-editor__column` (singular, the two
+grid children) — and separately indexed the Normalize mode `<select>` as
+the column's 2nd `<select>` when it's actually the 3rd (the Fade section's
+two curve dropdowns come first). Both fixed; rerun clean, 8/8 passed.
 
 **NEW (2026-09-15), scoped and ready — Audio Editor within the Media
 Library, "solid waveform editor" tier.** Previously deferred as a vague

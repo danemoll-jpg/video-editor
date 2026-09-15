@@ -146,18 +146,32 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
-**BUG, STILL BROKEN after last round's fix (2026-09-15).** Last round
+**Waveform-not-visible bug — RESOLVED (2026-09-15), same-day follow-up
+round, built and pixel/layout-verified.** An earlier round that same day
 fixed a real stereo phase-cancellation bug in peak computation, verified
 with a pixel-content Playwright test — but Dan's real file (`7 or 8
-Hours, Give or Take.mp3`) still shows no waveform. A screenshot of the
-real modal shows no visible box/canvas area at all between the
-instructions and the Trim section — pointing at a **CSS/layout sizing
-issue** (canvas rendering with zero on-screen height) rather than a
-drawing-content issue, which would explain why last round's pixel-content
-check passed: `getImageData()` reads the canvas's internal drawing
-surface regardless of its on-screen CSS box size. See TODO.md's Current
-Objective for full detail — next verification needs to check
-`getBoundingClientRect()` height, not just pixel content.
+Hours, Give or Take.mp3`) still showed no waveform, and a screenshot
+showed no visible box/canvas area at all between the instructions and the
+Trim section. Root cause, confirmed by measuring the live DOM: the
+`.audio-editor__scroll` container's `overflow-x: auto` implicitly computed
+`overflow-y: auto` too (a CSS spec quirk — `visible` on one overflow axis
+paired with non-`visible` on the other resolves to `auto`), which strips
+flexbox's "automatic minimum size" protection; once the modal's content
+exceeded its `max-height: 75vh`, the flex column shrank this item to ~0px
+tall, clipping the waveform/envelope canvases even though they kept their
+own correct 140px/71px `getBoundingClientRect()`. This is exactly why the
+earlier pixel-content check passed: `getImageData()` reads a canvas's
+internal drawing buffer regardless of its on-screen CSS box size — a
+structurally different thing from whether the element is actually visible.
+**Fix:** `.audio-editor__scroll` (`src/styles.css`) now sets
+`overflow-y: hidden` and `flex-shrink: 0` explicitly. **Verified** with a
+new `scripts/verifyAudioEditorLayout.cjs` — checks real
+`getBoundingClientRect()` height (not pixel content) against a real
+230.16s audio asset (matching Dan's actual file's duration) in a real
+1280×800 window; confirmed the bug reproduced pre-fix (`.audio-editor__
+scroll` measured 2px tall) and is gone post-fix (230px tall). See
+TODO.md's Current Objective for the full writeup. **Not yet done: Dan's
+own hands-on confirmation** on his real file/machine.
 
 **Audio Editor within the Media Library, "solid waveform editor" tier —
 BUILT (2026-09-15), not yet confirmed by Dan's own hands.** A new

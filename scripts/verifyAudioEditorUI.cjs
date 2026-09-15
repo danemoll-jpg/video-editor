@@ -116,12 +116,15 @@ async function main() {
   assertTrue(canvasWidth > 0, `waveform canvas rendered with a real, decoded width (${canvasWidth}px) — audio was actually decoded, not just a placeholder`)
 
   // --- Adjust fade/normalize fields, confirm no crash and values stick ------
-  await win.fill('.audio-editor__columns >> nth=1 >> input[type="number"] >> nth=0', '0.5')
-  const fadeInValue = await win.locator('.audio-editor__columns >> nth=1 >> input[type="number"] >> nth=0').inputValue()
+  // Note: `.audio-editor__columns` (plural) is the single grid wrapper; its
+  // two children are each `.audio-editor__column` (singular) — the second
+  // one holds Fade (two curve <select>s) then Normalize (one mode <select>).
+  await win.fill('.audio-editor__column >> nth=1 >> input[type="number"] >> nth=0', '0.5')
+  const fadeInValue = await win.locator('.audio-editor__column >> nth=1 >> input[type="number"] >> nth=0').inputValue()
   assertTrue(Number(fadeInValue) === 0.5, 'fade-in duration field accepts and reflects a typed value')
 
-  await win.selectOption('.audio-editor__columns >> nth=1 >> select >> nth=1', 'peak')
-  const normalizeValue = await win.locator('.audio-editor__columns >> nth=1 >> select >> nth=1').inputValue()
+  await win.selectOption('.audio-editor__column >> nth=1 >> select >> nth=2', 'peak')
+  const normalizeValue = await win.locator('.audio-editor__column >> nth=1 >> select >> nth=2').inputValue()
   assertTrue(normalizeValue === 'peak', 'normalize mode dropdown switches to Peak')
 
   // --- Add an envelope point via the button, confirm the row appears --------
