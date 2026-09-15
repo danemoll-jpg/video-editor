@@ -14,6 +14,11 @@ const MAX_PX_PER_SECOND = 300
 const TRACK_HEIGHT = 56
 const EDGE_HANDLE_WIDTH = 8
 
+export interface TimeRange {
+  start: number
+  end: number
+}
+
 interface Props {
   timeline: TimelineData
   selectedClipId: string | null
@@ -22,6 +27,9 @@ interface Props {
   onZoomChange: (px: number) => void
   onSeek: (time: number) => void
   onSelectClip: (clipId: string | null) => void
+  /** The Export dialog's GIF/Clip tabs read/write this — a shift-drag on the ruler below sets it (Phase 7's "select part of the timeline"). */
+  selection: TimeRange | null
+  onSelectionChange: (selection: TimeRange | null) => void
   /** Called continuously while dragging, for instant local visual feedback — no backend write. */
   onPreviewMove: (clipId: string, newStartTime: number, newTrackId: string) => void
   /** Called once when the drag ends — this is what actually persists. */
@@ -54,6 +62,8 @@ export default function Timeline({
   onZoomChange,
   onSeek,
   onSelectClip,
+  selection,
+  onSelectionChange,
   onPreviewMove,
   onCommitMove,
   onPreviewTrim,
@@ -102,6 +112,10 @@ export default function Timeline({
   }))
 
   function startScrub(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.shiftKey) {
+      startRangeSelect(e)
+      return
+    }
     const rect = e.currentTarget.getBoundingClientRect()
     const update = (clientX: number, clientY: number) => {
       const time = Math.max(0, (clientX - rect.left) / pxPerSecond)
@@ -115,6 +129,38 @@ export default function Timeline({
     function onUp() {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
+      setDragTooltip(null)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  /**
+   * Shift-drag on the ruler marks a range for the Export dialog's GIF/Clip
+   * tabs (Phase 7 — "select part of a clip/timeline"), separately from the
+   * plain click-drag above which just scrubs the playhead. A too-short drag
+   * (an accidental shift-click) clears the selection instead of leaving a
+   * near-zero-length one behind.
+   */
+  function startRangeSelect(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const anchor = Math.max(0, (e.clientX - rect.left) / pxPerSecond)
+    const update = (clientX: number, clientY: number) => {
+      const time = Math.max(0, (clientX - rect.left) / pxPerSecond)
+      const start = Math.min(anchor, time)
+      const end = Math.max(anchor, time)
+      onSelectionChange({ start, end })
+      setDragTooltip({ x: clientX, y: clientY, time })
+    }
+    update(e.clientX, e.clientY)
+    function onMove(ev: MouseEvent) {
+      update(ev.clientX, ev.clientY)
+    }
+    function onUp(ev: MouseEvent) {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      const time = Math.max(0, (ev.clientX - rect.left) / pxPerSecond)
+      if (Math.abs(time - anchor) < 0.15) onSelectionChange(null)
       setDragTooltip(null)
     }
     window.addEventListener('mousemove', onMove)
@@ -195,6 +241,16 @@ export default function Timeline({
           value={pxPerSecond}
           onChange={(e) => onZoomChange(Number(e.target.value))}
         />
+        <span className="muted timeline__selection-hint">
+          {selection
+            ? `Selected ${formatTime(selection.start)}–${formatTime(selection.end)} (shift-drag the ruler to change it)`
+            : 'Shift-drag the ruler to select a range for GIF/Clip export'}
+        </span>
+        {selection && (
+          <button className="btn" onClick={() => onSelectionChange(null)}>
+            ✕ Clear selection
+          </button>
+        )}
         <div className="spacer" />
         <button className="btn" onClick={() => onAddTrack('video')}>
           + Video Track
@@ -215,6 +271,12 @@ export default function Timeline({
                 {s % 5 === 0 && <span>{formatTime(s)}</span>}
               </div>
             ) : null,
+          )}
+          {selection && (
+            <div
+              className="timeline__selection"
+              style={{ left: selection.start * pxPerSecond, width: (selection.end - selection.start) * pxPerSecond }}
+            />
           )}
           <div className="timeline__playhead" style={{ left: playhead * pxPerSecond }} />
         </div>

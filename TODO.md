@@ -1479,6 +1479,159 @@ stops well short of ever calling the Anthropic API automatically:
   send it, and confirm the real reply that lands in the entry's prompt
   field is something he'd actually want to paste into Grok.
 
+**Item 3 — the actual "Phase 7 — Export Tools" build (MP4/Clip/GIF/Still
+Frame) — BUILT (2026-09-14), not yet confirmed by Dan's own hands.** Items
+1 and 2 above were the last two things blocking Phase 7 from starting, not
+Phase 7 itself — this is the real deliverable: MP4, GIF, still-frame, and
+clip exports as first-class features, built entirely on top of Phase 6's
+existing FFmpeg plumbing (`videoRuntime.ts`, `videoExportManager.ts`) per
+CLAUDE.md's "no new infrastructure" ask — no new FFmpeg call sites, no new
+binaries, no change to the main-process/renderer split (all compositing
+still happens in the main process; the renderer only calls `window.api.*`
+and renders what comes back).
+
+1. **`videoExportManager.ts` refactored, not rewritten.** The Phase 6
+   `exportMp4` method's body — resolving the timeline's assets to real
+   FFmpeg inputs, then building the visual compositing graph, then the
+   audio mix graph — is now three reusable pieces (`prepareExport`,
+   `buildVisualGraph`, `buildAudioGraph`) instead of one long inline
+   method, with the exact same filter-string output for a full-timeline
+   MP4 export as before (confirmed by this round's own scripted pass, which
+   re-exercises the original Phase 6 MP4 path unchanged). Every new export
+   type is a thin wrapper around these three, not a second implementation:
+   - **Clip export** (`exportClip`) — `exportMp4` grew an optional `range:
+     {start, end}` parameter; a new `clampClipToRange` helper restricts and
+     time-shifts every clip onto the range's own clock before the existing
+     graph-building code ever sees the timeline, so "export just this
+     window as its own MP4" needed zero new compositing logic. `exportClip`
+     itself is a one-line call into `exportMp4` with a range.
+   - **GIF export** (`exportGif`) — reuses `prepareExport`/`buildVisualGraph`
+     (range-clamped, so it shares the same "select part of the timeline"
+     mechanism as Clip export) for the picture, then appends FFmpeg's
+     standard two-pass `palettegen`/`paletteuse` chain at the caller's own
+     width/height/fps (independent of the project's canvas settings/frame
+     rate), a Low/Medium/High quality preset (`max_colors` + dither
+     algorithm), and `-loop 0`/`-loop -1` for "loop forever" vs. "play
+     once."
+   - **Still-frame export** (`exportStillFrame`) — captures one composited
+     PNG/JPEG at a timeline position by reusing the *same* range-clamping
+     machinery with a razor-thin window (`time`..`time`+1 output frame)
+     plus `-frames:v 1`, rather than rendering the whole timeline and
+     seeking within it — so it stays cheap regardless of how far into a
+     long timeline the requested time is.
+   - **Documented simplification:** a range that cuts through an active
+     transition's overlap window clears that clip's `transitionOut` instead
+     of attempting a partial blend against a partner clip that may now be
+     excluded or clamped differently — see `clampClipToRange`'s comment in
+     `videoExportManager.ts`. Only matters for a range deliberately drawn
+     through a transition's overlap, not ordinary use.
+2. **New IPC surface, same pattern as every prior manager.** `editor:
+   exportClip`/`editor:exportGif`/`editor:exportStillFrame` in `main.ts`,
+   mirrored in `preload.ts` and `src/api.d.ts` exactly like `editor:export`
+   already was — `ExportRange`/`GifExportOptions`/`StillFrameOptions` types
+   live in `videoExportManager.ts` (main process) and are re-exported
+   type-only into the renderer via `api.d.ts`, same as every other
+   main-process type the renderer needs.
+3. **One unified, tabbed Export dialog, not four separate flows.**
+   `ExportDialog.tsx` is now four tabs — Video (MP4), Clip, GIF, Still
+   Frame — behind the exact same "⬇ Export" button the old MP4-only dialog
+   used, directly per Dan's "not buried three menus deep" ask for the GIF
+   maker specifically: every export type is one click to the button, one
+   more to the tab. Clip/GIF share a `RangeFields` component (numeric
+   start/end, "Start/End = Playhead," "Use timeline selection," "Use full
+   timeline"); the GIF tab adds width/height (with an aspect-ratio lock to
+   the project canvas)/fps/quality/loop; the Still Frame tab adds a
+   time field (+ "Use Playhead") and a PNG/JPEG format choice. All four
+   tabs share the existing "Save to" destination picker (project's
+   `exports/` folder vs. a chosen folder) and progress/result UI from the
+   original MP4 dialog.
+4. **"Select part of a clip/timeline" on the actual timeline, not just
+   number fields.** `Timeline.tsx`'s ruler now supports a shift-drag range
+   selection (a plain click-drag still scrubs the playhead, unchanged) —
+   shown as a shaded region spanning the track lanes, with a "✕ Clear
+   selection" control. The Export dialog's Clip/GIF tabs read this via a
+   "Use timeline selection" button when one exists, so a real range can be
+   picked visually on the timeline itself rather than only by typing
+   seconds.
+- **Verification status:**
+  - `npm run typecheck` and `npm run build` both succeed (renderer + main
+    process).
+  - **Confirmed working on this machine, via a new scripted integration
+    test run through the real Electron runtime** (same pattern as every
+    prior phase — exercising the exact `VideoExportManager` code the IPC
+    handlers call, against this machine's real bundled FFmpeg, not a
+    reimplementation): committed as
+    [`scripts/verifyExportTools.cjs`](scripts/verifyExportTools.cjs) (run
+    with `npm run build` then
+    `node_modules/.bin/electron scripts/verifyExportTools.cjs`), the same
+    "committed, no binary fixtures needed" style as
+    `scripts/verifyChromaKey.mjs` — builds a real synthetic test clip via
+    the bundled FFmpeg each run. 25/25 assertions passed: a 2s Clip export
+    (1s..3s of a 6s source) comes out at the exact expected duration/canvas
+    resolution with its audio stream intact, not the full 6s; an
+    invalid (`end <= start`) range and a range containing no clips are both
+    rejected with a clear error instead of a crash/silent bad export; a
+    GIF export honors its own custom dimensions independent of the project
+    canvas, its requested fps (verified by real frame count, not just "it
+    ran"), and both loop states (checked by the actual presence/absence of
+    the GIF's `NETSCAPE2.0` looping extension bytes, not just "no error");
+    a width computed via the ExportDialog's own aspect-lock math (matching
+    what the UI would actually send) produces exactly that resolution; PNG
+    and JPEG still-frame exports are verified by real magic-byte checks
+    (not just file existence) and match the project canvas resolution; and
+    the documented transition-clamping simplification was exercised for
+    real — a range deliberately drawn through an active Cross Dissolve's
+    overlap window produced a valid export with both clips' transitions
+    correctly cleared (visible in the export-diagnostics log this run also
+    exercised), not a crash.
+  - **Confirmed working on this machine, via a one-off scripted Playwright
+    pass against the real, built Electron window** (same technique and
+    same "not committed, not Dan's own hands" caveat as every prior
+    phase's UI verification — Playwright itself was installed ad-hoc
+    (`npm install --no-save playwright`) purely to run this once, then
+    removed afterward; `package.json`/the lockfile are untouched). Isolated
+    the same way this round's other UI passes were (a fresh
+    `--user-data-dir` plus a pre-seeded `libraryLocation.json`, since a
+    bare `--user-data-dir` alone doesn't isolate
+    `app.getPath('documents')`). 18/18 assertions passed: created a real
+    project via the actual UI, opened the Editor tab, and confirmed the
+    Export dialog opens as the wide tabbed modal with all four tabs
+    present; each tab's distinguishing controls render (Clip's range
+    fields and "Use full timeline," GIF's width/quality/loop controls,
+    Still Frame's time field and "Use Playhead"); typing a new width in
+    the GIF tab with the aspect-lock checkbox on correctly recalculated the
+    height (640 → 360 for the default 1920×1080 canvas); the dialog closes
+    via its × button; a real shift-drag gesture on the timeline ruler (with
+    the Shift key actually held via Playwright's keyboard state, not just
+    simulated coordinates) produced a visible shaded selection region and
+    the "Clear selection" control appeared; zero renderer console/page
+    errors across the whole pass.
+  - **Not yet confirmed: Dan's own manual click-through in the live app.**
+    Same pattern as every prior phase: **Phase 7 stays the current
+    objective** until Dan has tried all four export types himself on a
+    real project — in particular the GIF maker end-to-end (pick a range,
+    adjust dimensions/fps/quality/loop, confirm the resulting file actually
+    looks/plays right), and a Clip/Still-Frame export on a timeline with a
+    chroma-keyed or transitioned clip in it, since those interact with the
+    range-clamping simplification described above.
+  - **Still not done / not verified:** no automated test suite (same
+    caveat as every phase — both scripts above are one-off, run-manually
+    scripts, not part of any CI/test-runner setup). GIF looping is a
+    boolean (loop forever vs. play once) rather than an exact repeat-count
+    field — not asked for by name, and a boolean covers the literal
+    "choose... looping" ask; revisit if Dan wants a specific repeat count.
+    The timeline's shift-drag selection can be redrawn but has no drag
+    handles of its own to nudge an existing selection's edges (unlike a
+    clip's trim handles) — dragging a fresh selection is the only way to
+    adjust it; the numeric Start/End fields in the Clip/GIF tabs are the
+    fallback for precise adjustment. The chroma-key-on-export diagnostic
+    log (`export-diagnostics.log`) is written for MP4/Clip exports only,
+    not GIF/Still-Frame — a deliberate scope call (that diagnostic is about
+    the alpha-compositing chain `buildVisualGraph` already shares with
+    every export type, so an MP4/Clip repro carries the same information)
+    rather than an oversight. No packaging/installer changes were needed
+    (same "app isn't packaged yet" note as every prior phase).
+
 **URGENT, PRIORITY (2026-09-14): real data loss on a real project — this
 is next, now that the chroma-key preview-accuracy work below is done.**
 Dan lost both an AI Assistant conversation (a genuinely good idea, per

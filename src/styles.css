@@ -1316,6 +1316,27 @@ body {
   pointer-events: none;
 }
 
+/* A shift-dragged range selection on the ruler (Phase 7 — GIF/Clip export's
+   "select part of the timeline"), spanning down through the track lanes the
+   same way the playhead line does, so it's visible against whatever's
+   selected regardless of which track it's on. */
+.timeline__selection {
+  position: absolute;
+  top: 0;
+  bottom: -2000px;
+  background: var(--accent);
+  opacity: 0.15;
+  border-left: 1px solid var(--accent);
+  border-right: 1px solid var(--accent);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.timeline__selection-hint {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .timeline__group-label {
   font-size: 10px;
   text-transform: uppercase;
@@ -1515,6 +1536,21 @@ body {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+/* Wider variant for the Export dialog's tabbed layout (Phase 7) — its Clip/
+   GIF tabs need room for side-by-side range/dimension fields that the
+   narrow default modal would wrap awkwardly. */
+.modal--wide {
+  width: 600px;
+}
+
+.export-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 65vh;
+  overflow-y: auto;
 }
 
 .modal__header {

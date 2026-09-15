@@ -15,7 +15,7 @@ import { AiAssistantManager, type AiAssistantContext } from './aiAssistantManage
 import { MediaLibraryManager } from './mediaLibraryManager'
 import { registerMediaProtocolHandler } from './mediaProtocol'
 import { EditorManager, type AddClipInput, type ClipUpdates } from './editorManager'
-import { VideoExportManager } from './videoExportManager'
+import { VideoExportManager, type ExportRange, type GifExportOptions, type StillFrameOptions } from './videoExportManager'
 import { LibraryRelocationManager } from './libraryRelocationManager'
 import type { ProjectSettings, TrackType } from './editorTypes'
 import type { ShotStatus } from './shotStatus'
@@ -421,6 +421,50 @@ ipcMain.handle('editor:export', async (event, projectId: string, outputName: str
     destinationDir,
   )
 })
+
+// --- IPC: Export Tools (Phase 7) — Clip/GIF/Still-frame export -------------
+// All three build on videoExportManager's existing FFmpeg plumbing (see that
+// file's header comment) rather than new infrastructure — exportClip is a
+// thin wrapper around exportMp4's own `range` parameter, and exportGif/
+// exportStillFrame share its prepareExport/buildVisualGraph.
+
+ipcMain.handle(
+  'editor:exportClip',
+  async (event, projectId: string, outputName: string, range: ExportRange, destinationDir?: string) => {
+    const sender = event.sender
+    return videoExportManager.exportClip(
+      projectId,
+      outputName,
+      range,
+      (progress) => {
+        if (!sender.isDestroyed()) sender.send('editor:exportProgress', progress)
+      },
+      destinationDir,
+    )
+  },
+)
+
+ipcMain.handle(
+  'editor:exportGif',
+  async (event, projectId: string, outputName: string, options: GifExportOptions, destinationDir?: string) => {
+    const sender = event.sender
+    return videoExportManager.exportGif(
+      projectId,
+      outputName,
+      options,
+      (progress) => {
+        if (!sender.isDestroyed()) sender.send('editor:exportProgress', progress)
+      },
+      destinationDir,
+    )
+  },
+)
+
+ipcMain.handle(
+  'editor:exportStillFrame',
+  async (_e, projectId: string, outputName: string, options: StillFrameOptions, destinationDir?: string) =>
+    videoExportManager.exportStillFrame(projectId, outputName, options, destinationDir),
+)
 
 // --- IPC: Library location (Settings) ---------------------------------------
 

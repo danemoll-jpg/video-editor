@@ -143,6 +143,34 @@ MP4/GIF/still-frame/clip export as first-class features, building on
 Phase 6's existing FFmpeg plumbing rather than new infrastructure. See
 TODO.md's Current Objective.
 
+**Phase 7 (Export Tools) — built (2026-09-14), not yet confirmed by Dan's
+own hands.** MP4 export (Phase 6's existing feature, unchanged) sits
+alongside three new export types, all reusing the same
+`electron/videoExportManager.ts` FFmpeg plumbing rather than new
+infrastructure: **Clip export** (a real standalone MP4 of just a selected
+window of the timeline — `exportMp4` grew an optional `range` parameter
+that a new `clampClipToRange` helper clamps/time-shifts every clip onto
+before the existing compositing code ever runs), **GIF export** (the same
+range-clamped visual composite piped through FFmpeg's `palettegen`/
+`paletteuse` at the caller's own width/height/fps/quality, with
+`-loop 0`/`-loop -1` for looping), and **still-frame export** (a single
+composited PNG/JPEG at a timeline position, via the same range-clamping
+machinery with a razor-thin window rather than rendering-then-seeking). A
+new `src/components/Timeline.tsx` shift-drag gesture on the ruler lets Dan
+select a range visually (a plain click-drag still just scrubs the
+playhead); `ExportDialog.tsx` is now one dialog with four tabs (Video/Clip/
+GIF/Still Frame) behind the same "⬇ Export" button, per the "not buried
+three menus deep" ask. A range that cuts through an active transition's
+overlap clears that transition rather than attempting a partial blend — a
+documented simplification, not a bug. Verified via a new committed
+scripted integration test (`scripts/verifyExportTools.cjs`, 25/25
+assertions against the real bundled FFmpeg) and a one-off scripted
+Playwright UI pass (18/18 assertions; Playwright was installed ad-hoc and
+removed afterward, not a permanent dependency) — see TODO.md's Current
+Objective (item 3) for the full build/verification writeup. **Phase 7
+stays the current objective** until Dan has tried all four export types
+himself on a real project.
+
 **Two fixes to the scene/shot outline generator**, found from Dan's real
 use. (1) The outline generator's system prompt (`aiAssistantManager.ts`'s
 `SCENE_OUTLINE_SYSTEM_PROMPT`, now exported for scripted verification) now

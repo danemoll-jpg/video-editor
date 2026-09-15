@@ -1,6 +1,6 @@
 // Builds an FFmpeg command from a project's timeline (editorManager.ts) and
-// runs it, producing a real MP4 in the project's `exports/` folder — the
-// only place in the app that ever synthesizes video, so all the "how do
+// runs it, producing real output files in the project's `exports/` folder —
+// the only place in the app that ever synthesizes video, so all the "how do
 // tracks/clips/transitions/chroma key/text overlays actually become a
 // picture" logic lives here rather than being duplicated between this and
 // the renderer's preview compositor (PreviewPlayer.tsx approximates the same
@@ -34,6 +34,31 @@
 // Deliberately not implemented this round: clip `rotation` (present in
 // editorTypes.ts's `Transform` for forward-compatibility, always 0 here) —
 // see TODO.md.
+//
+// --- Phase 7 — Export Tools ---------------------------------------------
+//
+// Everything below `prepareExport` (the visual/audio graph builders,
+// `mergeTransitions`, `atempoChain`, `runFfmpeg`) is exactly the Phase 6
+// code, untouched — Phase 7 didn't add new FFmpeg infrastructure, it just
+// gave the existing MP4-export plumbing two new entry points:
+//
+//   - `exportMp4` grew an optional `range` parameter (seconds, on the full
+//     timeline's own clock) that clips/shifts the timeline down to just that
+//     window before building the graph — `exportClip` is a one-line wrapper
+//     around exactly that, which is what makes "export just this selection
+//     as its own MP4" a first-class feature without a second code path.
+//   - `exportGif`/`exportStillFrame` reuse the same `prepareExport` (so they
+//     get range-clamping, input resolution, and per-clip trim/crop/speed/
+//     chroma-key/fade for free) and the same `buildVisualGraph` (so a GIF or
+//     a still frame is composited exactly the same way the MP4 export
+//     composites that instant), then bolt on their own format-specific tail
+//     (palette generation for GIF, `-frames:v 1` for a still).
+//
+// A range that cuts through an active transition's overlap disables that
+// transition on the clip it was clamped from, rather than attempting a
+// partial blend against a partner clip that may now be excluded entirely —
+// see `clampClipToRange`'s comment. Not expected to matter for the kind of
+// short, deliberate selections a GIF/clip/still export is used for.
 
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
@@ -52,6 +77,39 @@ export interface ExportProgress {
   message?: string
 }
 
+/** A window on the full timeline's own clock (seconds), for exporting less than the whole thing. */
+export interface ExportRange {
+  start: number
+  end: number
+}
+
+export type GifQuality = 'low' | 'medium' | 'high'
+
+export interface GifExportOptions {
+  range: ExportRange
+  /** Output pixel dimensions — the caller (renderer) computes these, aspect-ratio math included. */
+  width: number
+  height: number
+  fps: number
+  quality: GifQuality
+  /** true = loop forever, false = play once. */
+  loop: boolean
+}
+
+export type StillImageFormat = 'png' | 'jpg'
+
+export interface StillFrameOptions {
+  /** The timeline position (seconds) to capture. */
+  time: number
+  format: StillImageFormat
+}
+
+const GIF_QUALITY_PARAMS: Record<GifQuality, { maxColors: number; dither: string }> = {
+  low: { maxColors: 64, dither: 'bayer:bayer_scale=3' },
+  medium: { maxColors: 128, dither: 'sierra2_4a' },
+  high: { maxColors: 256, dither: 'sierra2_4a' },
+}
+
 interface ResolvedInput {
   clip: Clip
   asset: Asset
@@ -66,6 +124,20 @@ interface Unit {
   duration: number
 }
 
+/** Everything the visual/audio graph builders need — see `prepareExport`. */
+interface PreparedExport {
+  dir: string
+  timeline: Timeline
+  /** Seconds — the export's own duration, already range-adjusted when a range was given. */
+  totalDuration: number
+  width: number
+  height: number
+  fps: number
+  backgroundColor: string
+  inputArgs: string[]
+  resolvedByClipId: Map<string, ResolvedInput>
+}
+
 function hex(color: string): string {
   return `0x${color.replace('#', '')}`
 }
@@ -77,21 +149,52 @@ function escapeDrawtext(text: string): string {
   return text.replace(/'/g, '’').replace(/\r\n|\r|\n/g, ' ')
 }
 
-/** Exported for reverseProxyManager.ts's preview proxy, which needs the exact same speed-adjustment chain. */
-export function atempoChain(speed: number): string {
-  // `atempo` only accepts 0.5–2.0; chain multiple stages for anything outside that.
-  const stages: number[] = []
-  let remaining = speed
-  while (remaining > 2) {
-    stages.push(2)
-    remaining /= 2
+function sortByOrder(tracks: Track[]): Track[] {
+  return [...tracks].sort((a, b) => a.order - b.order)
+}
+
+function sanitizeOutputName(outputName: string, ext: string): string {
+  const safe = outputName.trim().replace(/[\\/:*?"<>|]/g, '_') || `export-${randomUUID().slice(0, 8)}`
+  return safe.toLowerCase().endsWith(`.${ext}`) ? safe : `${safe}.${ext}`
+}
+
+/**
+ * Restricts a clip to the portion of it that falls within `range`, shifting
+ * it onto the range's own clock (so the exported window's t=0 is
+ * `range.start`) — null if the clip doesn't overlap the range at all. A clip
+ * cut on either edge has its `transitionOut` cleared: the merge in
+ * `mergeTransitions` pairs a clip with whatever immediately follows it by
+ * exact start-time alignment, and a range boundary landing inside that
+ * overlap window (rare — only a range chosen to cut mid-transition) would
+ * otherwise risk pairing against a partner clip that got clamped or excluded
+ * differently. Treating a clamped transition as "none" is a documented
+ * simplification, not a bug: it only ever affects a range deliberately drawn
+ * through an active transition's overlap.
+ */
+function clampClipToRange(clip: Clip, range: ExportRange): Clip | null {
+  const clipEnd = clip.startTime + clip.duration
+  if (clipEnd <= range.start || clip.startTime >= range.end) return null
+
+  const frontCut = Math.max(0, range.start - clip.startTime)
+  const backCut = Math.max(0, clipEnd - range.end)
+  const newDuration = clip.duration - frontCut - backCut
+  if (newDuration <= 0.01) return null
+
+  const newStartTime = Math.max(clip.startTime, range.start) - range.start
+  const truncated = frontCut > 0 || backCut > 0
+  const transitionOut = truncated ? { type: 'none' as const, duration: clip.transitionOut.duration } : clip.transitionOut
+
+  if (clip.kind === 'text') {
+    return { ...clip, startTime: newStartTime, duration: newDuration, transitionOut }
   }
-  while (remaining < 0.5) {
-    stages.push(0.5)
-    remaining /= 0.5
+  return {
+    ...clip,
+    startTime: newStartTime,
+    duration: newDuration,
+    inPoint: clip.inPoint + frontCut * clip.speed,
+    outPoint: clip.outPoint - backCut * clip.speed,
+    transitionOut,
   }
-  stages.push(remaining)
-  return stages.map((s) => `atempo=${s.toFixed(6)}`).join(',')
 }
 
 /**
@@ -147,6 +250,23 @@ function mergeTransitions(
   return result
 }
 
+/** Exported for reverseProxyManager.ts's preview proxy, which needs the exact same speed-adjustment chain. */
+export function atempoChain(speed: number): string {
+  // `atempo` only accepts 0.5–2.0; chain multiple stages for anything outside that.
+  const stages: number[] = []
+  let remaining = speed
+  while (remaining > 2) {
+    stages.push(2)
+    remaining /= 2
+  }
+  while (remaining < 0.5) {
+    stages.push(0.5)
+    remaining /= 0.5
+  }
+  stages.push(remaining)
+  return stages.map((s) => `atempo=${s.toFixed(6)}`).join(',')
+}
+
 export class VideoExportManager {
   constructor(
     private readonly projectManager: ProjectManager,
@@ -159,19 +279,217 @@ export class VideoExportManager {
     onProgress: (progress: ExportProgress) => void,
     /** Absolute folder to write into — defaults to the project's own `exports/` folder when omitted (see ExportDialog.tsx's destination choice). */
     destinationDir?: string,
+    /** Export just this window of the timeline instead of the whole thing — see `exportClip`. */
+    range?: ExportRange,
   ): Promise<{ outputPath: string }> {
-    const dir = await requireProjectDir(projectId)
-    const timeline = await this.editorManager.getTimeline(projectId)
-
     onProgress({ stage: 'preparing', percent: 0 })
+    const prepared = await this.prepareExport(projectId, range)
 
-    if (timeline.clips.length === 0) throw new Error('The timeline is empty — add at least one clip first.')
+    const filterLines: string[] = []
+    const labelCounter = { n: 0 }
+    const voutLabel = this.buildVisualGraph(prepared, filterLines, labelCounter)
+    const aoutLabel = this.buildAudioGraph(prepared, filterLines, labelCounter)
+    const filterComplex = filterLines.join(';\n')
 
-    const { width, height, fps, backgroundColor } = timeline.projectSettings
-    const totalDuration = Math.max(...timeline.clips.map((c) => c.startTime + c.duration))
-    if (!Number.isFinite(totalDuration) || totalDuration <= 0) {
-      throw new Error('Could not determine the timeline duration.')
+    const exportsDir = destinationDir || path.join(prepared.dir, 'exports')
+    await fs.mkdir(exportsDir, { recursive: true })
+    const outputPath = path.join(exportsDir, sanitizeOutputName(outputName, 'mp4'))
+
+    const args = [
+      '-y',
+      ...prepared.inputArgs,
+      '-filter_complex',
+      filterComplex,
+      '-map',
+      `[${voutLabel}]`,
+      '-map',
+      `[${aoutLabel}]`,
+      '-r',
+      String(prepared.fps),
+      '-t',
+      prepared.totalDuration.toFixed(3),
+      '-c:v',
+      'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      '-preset',
+      'medium',
+      '-crf',
+      '20',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
+      '-movflags',
+      '+faststart',
+      '-progress',
+      'pipe:1',
+      '-nostats',
+      outputPath,
+    ]
+
+    await this.writeExportDiagnostics(prepared.dir, {
+      projectId,
+      outputPath,
+      timeline: prepared.timeline,
+      resolvedByClipId: prepared.resolvedByClipId,
+      filterComplex,
+      args,
+    })
+
+    onProgress({ stage: 'encoding', percent: 0 })
+    await this.runFfmpeg(args, prepared.totalDuration, onProgress)
+    onProgress({ stage: 'done', percent: 100 })
+
+    return { outputPath }
+  }
+
+  /**
+   * "Export Clip" (TODO.md's Phase 7 scope) — a real, standalone MP4 of just
+   * the given window of the timeline, not the whole thing. Deliberately just
+   * a thin wrapper around `exportMp4`'s existing `range` parameter rather
+   * than a second implementation — same encode settings, same diagnostics,
+   * same progress reporting.
+   */
+  async exportClip(
+    projectId: string,
+    outputName: string,
+    range: ExportRange,
+    onProgress: (progress: ExportProgress) => void,
+    destinationDir?: string,
+  ): Promise<{ outputPath: string }> {
+    if (!(range.end > range.start)) throw new Error('Invalid clip range — the end must be after the start.')
+    return this.exportMp4(projectId, outputName, onProgress, destinationDir, range)
+  }
+
+  /**
+   * GIF export (TODO.md's Phase 7 scope) — the same range-clamped visual
+   * composite `exportClip` would build, piped through a two-pass palette
+   * (`palettegen`/`paletteuse`, the standard way to get a real-looking GIF
+   * out of FFmpeg instead of the default 256-fixed-web-palette banding) at
+   * the caller-chosen dimensions/fps/quality, with `-loop` controlling
+   * whether it repeats.
+   */
+  async exportGif(
+    projectId: string,
+    outputName: string,
+    options: GifExportOptions,
+    onProgress: (progress: ExportProgress) => void,
+    destinationDir?: string,
+  ): Promise<{ outputPath: string }> {
+    if (!(options.range.end > options.range.start)) throw new Error('Invalid GIF range — the end must be after the start.')
+    onProgress({ stage: 'preparing', percent: 0 })
+    const prepared = await this.prepareExport(projectId, options.range)
+
+    const filterLines: string[] = []
+    const labelCounter = { n: 0 }
+    const voutLabel = this.buildVisualGraph(prepared, filterLines, labelCounter)
+
+    const quality = GIF_QUALITY_PARAMS[options.quality]
+    const width = Math.max(2, Math.round(options.width))
+    const height = Math.max(2, Math.round(options.height))
+    const fps = Math.max(1, Math.round(options.fps))
+    filterLines.push(
+      `[${voutLabel}]fps=${fps},scale=${width}:${height}:flags=lanczos,split[gs0][gs1]`,
+      `[gs0]palettegen=max_colors=${quality.maxColors}:stats_mode=full[gpalette]`,
+      `[gs1][gpalette]paletteuse=dither=${quality.dither}[gifout]`,
+    )
+    const filterComplex = filterLines.join(';\n')
+
+    const exportsDir = destinationDir || path.join(prepared.dir, 'exports')
+    await fs.mkdir(exportsDir, { recursive: true })
+    const outputPath = path.join(exportsDir, sanitizeOutputName(outputName, 'gif'))
+
+    const args = [
+      '-y',
+      ...prepared.inputArgs,
+      '-filter_complex',
+      filterComplex,
+      '-map',
+      '[gifout]',
+      '-loop',
+      options.loop ? '0' : '-1',
+      '-progress',
+      'pipe:1',
+      '-nostats',
+      outputPath,
+    ]
+
+    onProgress({ stage: 'encoding', percent: 0 })
+    await this.runFfmpeg(args, prepared.totalDuration, onProgress)
+    onProgress({ stage: 'done', percent: 100 })
+
+    return { outputPath }
+  }
+
+  /**
+   * Still-frame export (TODO.md's Phase 7 scope) — captures exactly one
+   * composited frame at a timeline position as a real PNG/JPEG. Reuses
+   * `prepareExport`'s range-clamping with a razor-thin window
+   * (`time`..`time`+1 output frame) rather than rendering the whole timeline
+   * and seeking within it: every clip's own trim math already shifts to
+   * "start of the window" the same way `exportClip` relies on, so this stays
+   * cheap regardless of how far into a long timeline `time` is, and `-frames:v
+   * 1` guarantees exactly one frame comes out even though the window itself
+   * isn't exactly one frame long.
+   */
+  async exportStillFrame(
+    projectId: string,
+    outputName: string,
+    options: StillFrameOptions,
+    destinationDir?: string,
+  ): Promise<{ outputPath: string }> {
+    const start = Math.max(0, options.time)
+    const prepared = await this.prepareExport(projectId, { start, end: start + 1 / 30 })
+
+    const filterLines: string[] = []
+    const labelCounter = { n: 0 }
+    const voutLabel = this.buildVisualGraph(prepared, filterLines, labelCounter)
+    const filterComplex = filterLines.join(';\n')
+
+    const exportsDir = destinationDir || path.join(prepared.dir, 'exports')
+    await fs.mkdir(exportsDir, { recursive: true })
+    const ext = options.format === 'jpg' ? 'jpg' : 'png'
+    const outputPath = path.join(exportsDir, sanitizeOutputName(outputName, ext))
+
+    const args = ['-y', ...prepared.inputArgs, '-filter_complex', filterComplex, '-map', `[${voutLabel}]`, '-frames:v', '1', outputPath]
+
+    await this.runFfmpeg(args, prepared.totalDuration, () => {})
+
+    return { outputPath }
+  }
+
+  /**
+   * Loads the timeline and (when `range` is given) clamps every clip to that
+   * window and shifts it onto the window's own clock via
+   * `clampClipToRange`, then resolves every media clip's asset to an actual
+   * FFmpeg input — exactly the input-resolution half of what used to be the
+   * front of `exportMp4` before Phase 7 split it out so `exportGif`/
+   * `exportStillFrame` (and `exportClip`, via `exportMp4`'s own `range`) can
+   * all share it instead of re-deriving it.
+   */
+  private async prepareExport(projectId: string, range?: ExportRange): Promise<PreparedExport> {
+    const dir = await requireProjectDir(projectId)
+    const rawTimeline = await this.editorManager.getTimeline(projectId)
+
+    let clips: Clip[]
+    let totalDuration: number
+    if (range) {
+      clips = rawTimeline.clips.map((c) => clampClipToRange(c, range)).filter((c): c is Clip => c !== null)
+      totalDuration = range.end - range.start
+    } else {
+      clips = rawTimeline.clips
+      totalDuration = clips.length > 0 ? Math.max(...clips.map((c) => c.startTime + c.duration)) : 0
     }
+    if (clips.length === 0) {
+      throw new Error(range ? 'No clips exist in the selected range.' : 'The timeline is empty — add at least one clip first.')
+    }
+    if (!Number.isFinite(totalDuration) || totalDuration <= 0) {
+      throw new Error('Could not determine the export duration.')
+    }
+
+    const timeline: Timeline = { ...rawTimeline, clips }
+    const { width, height, fps, backgroundColor } = timeline.projectSettings
 
     const assets = await this.projectManager.listAssets(projectId)
     const assetById = new Map(assets.map((a) => [a.id, a]))
@@ -180,7 +498,7 @@ export class VideoExportManager {
     const resolvedByClipId = new Map<string, ResolvedInput>()
     let nextInputIndex = 0
 
-    for (const clip of timeline.clips) {
+    for (const clip of clips) {
       if (clip.kind !== 'media' || !clip.assetId) continue
       const asset = assetById.get(clip.assetId)
       if (!asset) throw new Error(`Asset for a clip on the timeline no longer exists.`)
@@ -197,16 +515,22 @@ export class VideoExportManager {
       nextInputIndex++
     }
 
-    const filterLines: string[] = []
-    const labelCounter = { n: 0 }
+    return { dir, timeline, totalDuration, width, height, fps, backgroundColor, inputArgs, resolvedByClipId }
+  }
 
-    // --- Background base -----------------------------------------------
+  /**
+   * Builds the background + per-clip visual chains + transition-merge +
+   * time-shifted overlay composite, pushing every line into `filterLines`
+   * and returning the label of the final composited video stream (always
+   * `'vout'`, plain `yuv420p`, no audio) — shared by every export type in
+   * this file, since all four need "what does the picture look like."
+   */
+  private buildVisualGraph(prepared: PreparedExport, filterLines: string[], labelCounter: { n: number }): string {
+    const { timeline, resolvedByClipId, totalDuration, width, height, fps, backgroundColor } = prepared
+
     filterLines.push(
       `color=c=${hex(backgroundColor)}:s=${width}x${height}:r=${fps}:d=${totalDuration.toFixed(3)},format=yuva420p[base0]`,
     )
-    filterLines.push(`anullsrc=r=48000:cl=stereo,atrim=duration=${totalDuration.toFixed(3)}[silence]`)
-
-    // --- Per-clip visual streams (video/overlay tracks + text clips) -------
 
     const videoTracks = timeline.tracks.filter((t) => t.type === 'video' && !t.hidden)
     const overlayTracks = timeline.tracks.filter((t) => t.type === 'overlay' && !t.hidden)
@@ -265,8 +589,20 @@ export class VideoExportManager {
       }
     }
     filterLines.push(`[${running}]format=yuv420p[vout]`)
+    return 'vout'
+  }
 
-    // --- Audio ------------------------------------------------------------
+  /**
+   * Builds the silent bed + per-clip audio chains + transition-merge +
+   * delayed mix, pushing every line into `filterLines` and returning the
+   * label of the final mixed audio stream (always `'aout'`) — shared by
+   * `exportMp4`/`exportClip` (GIF and still-frame exports have no audio, so
+   * they never call this).
+   */
+  private buildAudioGraph(prepared: PreparedExport, filterLines: string[], labelCounter: { n: number }): string {
+    const { timeline, resolvedByClipId, totalDuration } = prepared
+
+    filterLines.push(`anullsrc=r=48000:cl=stereo,atrim=duration=${totalDuration.toFixed(3)}[silence]`)
 
     const audioTracks = sortByOrder(timeline.tracks.filter((t) => t.type === 'audio'))
     const audioMixLabels: string[] = ['silence']
@@ -298,7 +634,7 @@ export class VideoExportManager {
 
     // Video-track clips with their own included audio, independent of the
     // video-track transition-merge above (audio doesn't visually transition).
-    for (const track of videoTracks) {
+    for (const track of timeline.tracks.filter((t) => t.type === 'video' && !t.hidden)) {
       if (track.muted) continue
       for (const clip of timeline.clips.filter((c) => c.trackId === track.id)) {
         const resolved = resolvedByClipId.get(clip.id)
@@ -314,78 +650,28 @@ export class VideoExportManager {
     filterLines.push(
       `${audioMixLabels.map((l) => `[${l}]`).join('')}amix=inputs=${audioMixLabels.length}:duration=longest:normalize=0,alimiter=limit=0.95[aout]`,
     )
-
-    const filterComplex = filterLines.join(';\n')
-
-    const exportsDir = destinationDir || path.join(dir, 'exports')
-    await fs.mkdir(exportsDir, { recursive: true })
-    const safeName = outputName.trim().replace(/[\\/:*?"<>|]/g, '_') || `export-${randomUUID().slice(0, 8)}`
-    const outputPath = path.join(exportsDir, safeName.endsWith('.mp4') ? safeName : `${safeName}.mp4`)
-
-    const args = [
-      '-y',
-      ...inputArgs,
-      '-filter_complex',
-      filterComplex,
-      '-map',
-      '[vout]',
-      '-map',
-      '[aout]',
-      '-r',
-      String(fps),
-      '-t',
-      totalDuration.toFixed(3),
-      '-c:v',
-      'libx264',
-      '-pix_fmt',
-      'yuv420p',
-      '-preset',
-      'medium',
-      '-crf',
-      '20',
-      '-c:a',
-      'aac',
-      '-b:a',
-      '192k',
-      '-movflags',
-      '+faststart',
-      '-progress',
-      'pipe:1',
-      '-nostats',
-      outputPath,
-    ]
-
-    await this.writeExportDiagnostics(dir, {
-      projectId,
-      outputPath,
-      timeline,
-      resolvedByClipId,
-      filterComplex,
-      args,
-    })
-
-    onProgress({ stage: 'encoding', percent: 0 })
-    await this.runFfmpeg(args, totalDuration, onProgress)
-    onProgress({ stage: 'done', percent: 100 })
-
-    return { outputPath }
+    return 'aout'
   }
 
   /**
    * TEMPORARY diagnostic logging for the chroma-key-on-export bug (TODO.md —
    * still not reproducible against last round's synthetic test footage).
-   * Written unconditionally on every export attempt, success or failure,
-   * since the reported symptom is a *wrong-looking* export, not an FFmpeg
-   * error — a try/catch around just the failure path would miss exactly the
-   * run that matters. Remove once that bug is actually closed out; this
-   * isn't meant to be permanent instrumentation.
+   * Written unconditionally on every MP4/clip export attempt, success or
+   * failure, since the reported symptom is a *wrong-looking* export, not an
+   * FFmpeg error — a try/catch around just the failure path would miss
+   * exactly the run that matters. Remove once that bug is actually closed
+   * out; this isn't meant to be permanent instrumentation. Not written for
+   * GIF/still-frame exports — a different, format-specific tail, and this
+   * diagnostic is specifically about the chroma-key/alpha-compositing chain
+   * `buildVisualGraph` shares with them anyway.
    *
    * Written to a fixed filename in the project's own `exports/` folder
    * (never the custom per-export destination from item 6 — this file needs
-   * to be somewhere predictable regardless of where the MP4 itself lands),
-   * overwriting the previous attempt's log each time, plus mirrored to the
-   * console for whenever the app happens to be run from a visible terminal
-   * (`npm run dev`/`npm start`) rather than the hidden-console launcher.
+   * to be somewhere predictable regardless of where the output itself
+   * lands), overwriting the previous attempt's log each time, plus mirrored
+   * to the console for whenever the app happens to be run from a visible
+   * terminal (`npm run dev`/`npm start`) rather than the hidden-console
+   * launcher.
    */
   private async writeExportDiagnostics(
     projectDir: string,
@@ -577,8 +863,4 @@ export class VideoExportManager {
       })
     })
   }
-}
-
-function sortByOrder(tracks: Track[]): Track[] {
-  return [...tracks].sort((a, b) => a.order - b.order)
 }

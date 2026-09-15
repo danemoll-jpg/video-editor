@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Asset, Clip, ClipUpdates, Timeline as TimelineData, TrackType } from '../api'
-import Timeline from './Timeline'
+import Timeline, { type TimeRange } from './Timeline'
 import PreviewPlayer from './PreviewPlayer'
 import ClipInspector from './ClipInspector'
 import ExportDialog from './ExportDialog'
@@ -35,6 +35,7 @@ export default function EditorView({ projectId, projectName, assets }: Props) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [pxPerSecond, setPxPerSecond] = useState(80)
   const [showExport, setShowExport] = useState(false)
+  const [selection, setSelection] = useState<TimeRange | null>(null)
   const [addTrackId, setAddTrackId] = useState<string>('')
   const [addAssetId, setAddAssetId] = useState<string>('')
 
@@ -136,7 +137,7 @@ export default function EditorView({ projectId, projectName, assets }: Props) {
             <span className="muted">{playhead.toFixed(2)}s</span>
             <div className="spacer" />
             <button className="btn btn--primary" onClick={() => setShowExport(true)}>
-              ⬇ Export MP4
+              ⬇ Export
             </button>
           </div>
 
@@ -210,6 +211,8 @@ export default function EditorView({ projectId, projectName, assets }: Props) {
         onZoomChange={setPxPerSecond}
         onSeek={setPlayhead}
         onSelectClip={setSelectedClipId}
+        selection={selection}
+        onSelectionChange={setSelection}
         onPreviewMove={(clipId, newStartTime, newTrackId) => updateLocalClip(clipId, { startTime: newStartTime, trackId: newTrackId })}
         onCommitMove={(clipId, newStartTime, newTrackId) =>
           refreshFrom(window.api.updateClip(projectId, clipId, { startTime: newStartTime, trackId: newTrackId }))
@@ -241,7 +244,14 @@ export default function EditorView({ projectId, projectName, assets }: Props) {
       />
 
       {showExport && (
-        <ExportDialog projectId={projectId} defaultName={`${projectName}-export`} onClose={() => setShowExport(false)} />
+        <ExportDialog
+          projectId={projectId}
+          projectName={projectName}
+          timeline={timeline}
+          playhead={playhead}
+          selection={selection}
+          onClose={() => setShowExport(false)}
+        />
       )}
     </div>
   )

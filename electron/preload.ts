@@ -22,7 +22,7 @@ import type { MediaLibraryEntry, ExportFile } from './mediaLibraryManager'
 import type { ShotStatus } from './shotStatus'
 import type { PromptLabKind } from './promptLabTypes'
 import type { AddClipInput, ClipUpdates } from './editorManager'
-import type { ExportProgress } from './videoExportManager'
+import type { ExportProgress, ExportRange, GifExportOptions, StillFrameOptions } from './videoExportManager'
 import type { ProjectSettings, Timeline, TrackType } from './editorTypes'
 import type { LibraryLocation, RelocateLibraryResult } from './libraryRelocationManager'
 
@@ -236,6 +236,25 @@ const api = {
   chooseExportDestination: (): Promise<string | null> => ipcRenderer.invoke('editor:chooseExportDestination'),
   exportTimeline: (projectId: string, outputName: string, destinationDir?: string): Promise<{ outputPath: string }> =>
     ipcRenderer.invoke('editor:export', projectId, outputName, destinationDir),
+  exportClip: (
+    projectId: string,
+    outputName: string,
+    range: ExportRange,
+    destinationDir?: string,
+  ): Promise<{ outputPath: string }> => ipcRenderer.invoke('editor:exportClip', projectId, outputName, range, destinationDir),
+  exportGif: (
+    projectId: string,
+    outputName: string,
+    options: GifExportOptions,
+    destinationDir?: string,
+  ): Promise<{ outputPath: string }> => ipcRenderer.invoke('editor:exportGif', projectId, outputName, options, destinationDir),
+  exportStillFrame: (
+    projectId: string,
+    outputName: string,
+    options: StillFrameOptions,
+    destinationDir?: string,
+  ): Promise<{ outputPath: string }> =>
+    ipcRenderer.invoke('editor:exportStillFrame', projectId, outputName, options, destinationDir),
   onExportProgress: (callback: (progress: ExportProgress) => void): (() => void) => {
     const listener = (_e: Electron.IpcRendererEvent, progress: ExportProgress) => callback(progress)
     ipcRenderer.on('editor:exportProgress', listener)

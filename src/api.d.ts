@@ -25,7 +25,14 @@ import type { MediaLibraryEntry, MediaUsage, ExportFile } from '../electron/medi
 import type { ShotStatus } from '../electron/shotStatus'
 import type { PromptLabKind } from '../electron/promptLabTypes'
 import type { AddClipInput, ClipUpdates } from '../electron/editorManager'
-import type { ExportProgress } from '../electron/videoExportManager'
+import type {
+  ExportProgress,
+  ExportRange,
+  GifExportOptions,
+  GifQuality,
+  StillFrameOptions,
+  StillImageFormat,
+} from '../electron/videoExportManager'
 import type { LibraryLocation, RelocateLibraryResult } from '../electron/libraryRelocationManager'
 import type {
   Clip,
@@ -75,6 +82,11 @@ export type {
   AddClipInput,
   ClipUpdates,
   ExportProgress,
+  ExportRange,
+  GifExportOptions,
+  GifQuality,
+  StillFrameOptions,
+  StillImageFormat,
   LibraryLocation,
   RelocateLibraryResult,
   Clip,
@@ -262,6 +274,24 @@ declare global {
 
       chooseExportDestination(): Promise<string | null>
       exportTimeline(projectId: string, outputName: string, destinationDir?: string): Promise<{ outputPath: string }>
+      exportClip(
+        projectId: string,
+        outputName: string,
+        range: ExportRange,
+        destinationDir?: string,
+      ): Promise<{ outputPath: string }>
+      exportGif(
+        projectId: string,
+        outputName: string,
+        options: GifExportOptions,
+        destinationDir?: string,
+      ): Promise<{ outputPath: string }>
+      exportStillFrame(
+        projectId: string,
+        outputName: string,
+        options: StillFrameOptions,
+        destinationDir?: string,
+      ): Promise<{ outputPath: string }>
       onExportProgress(callback: (progress: ExportProgress) => void): () => void
 
       getLibraryLocation(): Promise<LibraryLocation>
