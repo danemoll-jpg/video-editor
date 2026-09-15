@@ -1191,13 +1191,59 @@ decided — its live preview was already correct via a CSS flip.
 
 Current Objective (Focus Area)
 
-**Both scene/shot outline generator fixes CONFIRMED by Dan (2026-09-14),
-working as expected.** Item 1 (verbatim script-detail preservation) and
-item 2 (shot → Grok prompt: composed request lands unsent in the AI
-Assistant composer for review, response auto-inserts into the prompt
-field once Dan sends it, Idea notes pulled in as style/rules context) are
-both closed. This was the last item blocking progress — **Phase 7 (Export
-Tools) is now current.**
+**NEW, PRIORITY (2026-09-14), being built in parallel while Dan tests
+Phase 7: a Style tab, plus Phase 8 (Smarter Assistance) built around it.**
+Scoped in a chat conversation while Phase 7 was in progress — not tested
+against real code yet, this is the first handoff of this design.
+
+**Background — why Style is its own tab, not part of Idea:** Idea notes
+were doing double duty (premise/plot brainstorming *and* implicit style
+rules). Dan's reasoning, confirmed correct: Idea's influence is meant to
+flow downstream and get baked into the Script once — re-including raw
+Idea notes at generation time is redundant with what's already in the
+shot/scene descriptions being used. Style is different in kind: cross-
+cutting visual/tonal rules (e.g. "camera stays locked unless it's an
+emotional beat," "Abi is always slightly translucent") that nothing
+downstream captures automatically — they need to be reasserted at *every*
+generation step, not just baked in once.
+
+1. **New Style tab.** Mirrors the Idea/Script pattern exactly — freeform
+   text, the same debounced autosave from the data-loss fix (this needs
+   the same treatment, not a regression back to explicit-save-only).
+2. **Style notes REPLACE Idea notes as context for AI prompt drafting**
+   (Grok/Suno/SFX) — this is a real revision to the already-built and
+   Dan-confirmed Grok flow (item 2 above), not just new scope. Idea notes
+   go back to being purely for brainstorming, no longer pulled into any
+   generation step.
+3. **Style notes are ALSO added to the "Generate Scenes & Shots" outline
+   generator** (`generateSceneOutline`), which didn't use Idea notes at
+   all before — this is new context there, not a swap.
+4. **Extend the review-before-send "Draft Prompt" pattern to Suno and
+   SFX**, mirroring Grok's design (composed request lands unsent in the AI
+   Assistant for Dan's review/edit, response auto-inserts into the prompt
+   field once he sends it):
+   - **"Draft Suno Prompt" on each scene.** Needs its own new link — a
+     scene's existing `linkedSongAssetIds` is for finished song *assets*
+     already imported; this needs a separate link to the Suno Prompt Lab
+     *entry* itself (the drafting/rating side), kept distinct, mirroring
+     how a shot already separates its primary clip link from
+     `linkedSfxIds`.
+   - **"Draft SFX Prompt" on each shot**, using the SFX system (merged
+     with the old ElevenLabs lab back in Phase 5).
+   - **Unlike Grok (one entry per shot, repeat clicks navigate to the
+     same entry): Suno/SFX always draft a brand-new entry on every
+     click**, confirmed explicitly by Dan — since scenes/shots already
+     allow multiple linked songs/SFX (the Phase 5 multi-link feature), a
+     shot might genuinely want footsteps *and* wind *and* a door creak as
+     three separate entries, not one being repeatedly reopened.
+5. **All three labs' composed draft requests auto-include that lab's own
+   proven-technique context** — top-rated entries + promoted recipes for
+   that specific lab, plus the new Style notes — folded directly into the
+   visible, editable, unsent composed text, not an invisible
+   system-prompt injection. This context is assembled once, when a new
+   drafting entry is first created — not re-injected on every follow-up
+   turn in an ongoing back-and-forth, which would be wasteful and could
+   muddy an otherwise-focused conversation.
 
 **Phase 7 — Export Tools.** MP4, GIF, still-frame, and clip exports as
 first-class features (GIF maker: select part of a clip/timeline → choose

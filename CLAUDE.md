@@ -137,8 +137,20 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
-**Both scene/shot outline generator fixes CONFIRMED by Dan (2026-09-14),
-working as expected.** Closed. **Phase 7 (Export Tools) is now current** —
+**NEW, PRIORITY (2026-09-14), being built while Dan tests Phase 7: a
+Style tab, plus Phase 8 built around it.** A new Style tab (mirrors
+Idea/Script, autosave) holds cross-cutting visual/tonal rules. Style
+notes **replace** Idea notes as context for AI prompt drafting (a real
+revision to the already-built Grok flow) and get **added** to the scene/
+shot outline generator (new context there, not a swap). Phase 8 extends
+the review-before-send "Draft Prompt" pattern to Suno (per scene) and SFX
+(per shot) — unlike Grok's one-per-shot, these always draft a brand-new
+entry per click, since scenes/shots already allow multiple. All three
+labs' drafts auto-include that lab's top-rated entries + recipes + Style
+notes, assembled once per new entry, not re-injected every turn. See
+TODO.md's Current Objective for full scope — not yet built.
+
+**Phase 7 (Export Tools) is built, not yet confirmed by Dan** —
 MP4/GIF/still-frame/clip export as first-class features, building on
 Phase 6's existing FFmpeg plumbing rather than new infrastructure. See
 TODO.md's Current Objective.
