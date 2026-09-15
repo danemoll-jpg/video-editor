@@ -1245,6 +1245,187 @@ generation step, not just baked in once.
    turn in an ongoing back-and-forth, which would be wasteful and could
    muddy an otherwise-focused conversation.
 
+**BUILT (2026-09-14/15), all five pieces above — not yet confirmed by
+Dan's own hands, per this project's normal pattern.** Reporting each
+separately, as asked:
+
+1. **New Style tab — built, matches the described scope exactly.** New
+   `Style` type/`getStyle`/`saveStyle` on `ProductionManager`
+   (`productionManager.ts`, storing `style/style.json`, identical trivial
+   shape/pattern to `Idea`/`Script`), wired through `main.ts`/`preload.ts`/
+   `src/api.d.ts` the same way. New `src/components/StyleEditor.tsx` is a
+   line-for-line mirror of `IdeaEditor.tsx`: freeform textarea, the same
+   `useAutosave` debounced-autosave-plus-flush-on-unmount the data-loss fix
+   built (no regression to explicit-save-only), an embedded
+   `AiAssistantPanel` (`context: 'style'`, a new fifth `AiAssistantContext`
+   with its own system prompt in `aiAssistantManager.ts`). Added to
+   `ProjectView.tsx`'s tab bar between Idea and Script.
+2. **Style notes replace Idea notes as Grok/Suno/SFX draft context —
+   built, matches exactly.** `SceneList.tsx`'s `handleDraftGrokPrompt` now
+   calls `window.api.getStyle` instead of `window.api.getIdea` when
+   assembling the composed draft request; the new `handleDraftSunoPrompt`/
+   `handleDraftSfxPrompt` (item 4) use the same `getStyle` call from the
+   start. Idea notes are no longer read by any drafting flow — confirmed by
+   a scripted Playwright pass that set distinct, clearly-labeled text in
+   both tabs and asserted the Grok composer contains the Style text and
+   *not* the Idea text (see verification below).
+3. **Style notes added to the outline generator — built, matches exactly,
+   additive not a swap.** `aiAssistantManager.ts`'s `generateSceneOutline`
+   gained an optional `styleNotes` parameter and a new exported
+   `buildOutlineUserMessage(scriptText, styleNotes)` helper that prepends a
+   labeled Style-notes block ahead of the script text when any notes exist
+   (unchanged, verbatim script text when there are none — never blocks or
+   errors on empty Style notes). The renderer side
+   (`GenerateOutlineDialog.tsx`) needed **zero changes**: `main.ts`'s
+   `ai:generateSceneOutline` IPC handler now fetches the project's Style
+   notes via `productionManager.getStyle` and passes them into the manager
+   call itself — this orchestration is entirely a main-process concern,
+   the same pattern `scenes:applyGenerated`'s add/replace wiring already
+   used.
+4. **"Draft Suno Prompt" (scene) / "Draft SFX Prompt" (shot) — built,
+   matches the "always draft a brand-new entry" design exactly, confirmed
+   distinct from Grok's reuse-on-click behavior.**
+   - **Suno** needed a real new link, per the design: `Scene` gained
+     `linkedSunoEntryIds: string[]` (`productionManager.ts`, defaults to
+     `[]` via `normalizeScene` for scenes read from before this field
+     existed, threaded through `updateScene`'s updates type in
+     `main.ts`/`preload.ts`/`src/api.d.ts` exactly like every other list
+     field), kept fully separate from the pre-existing
+     `linkedSongAssetIds` (finished, imported song assets). A new
+     "🎵 Draft Suno Prompt" button in `SceneCard.tsx`'s scene actions row
+     shows a running count once any exist (e.g. "🎵 Draft Suno Prompt (2
+     drafted)"); `SceneList.tsx`'s new `handleDraftSunoPrompt` always calls
+     `createPromptEntry(..., 'suno', ...)` and appends the new id —
+     never checks or reuses an existing one, unlike Grok's
+     `linkedGrokEntryId` single-slot check.
+   - **SFX** needed **no new field at all** — a real, deliberate scope
+     finding, not an oversight: the unified SFX system's entries already
+     serve both the "finished/tagged sound" and "draft prompt" roles, so
+     the shot's existing `linkedSfxIds` (Phase 5) is exactly the right
+     place for a newly-drafted entry's id to land. A new
+     "🔊 Draft SFX Prompt" button in `ShotCard.tsx` (next to "✨ Draft Grok
+     Prompt," also showing a running count) creates a new `source:
+     'elevenlabs'` SFX entry via `SceneList.tsx`'s new
+     `handleDraftSfxPrompt` and appends its id to `linkedSfxIds` — the
+     entry then shows up checked in the shot's pre-existing "Linked SFX"
+     checkbox list with no further code needed there.
+   - Both reuse the exact review-before-send composer-placement/
+     auto-insert mechanism Grok already established (`saveAiDraft` +
+     `armAutoInsert`), which required generalizing that plumbing beyond
+     "always Grok": `ProjectView.tsx`'s prior `promptLabFocusEntryId`/
+     `onOpenGrokEntry` (Grok-only, since Grok was the Prompt Lab's default
+     sub-tab) became `promptLabFocusKind`/`promptLabFocusEntryId`/
+     `handleOpenPromptEntry(kind, entryId, armAutoInsert)`, where `kind` is
+     `PromptLab.tsx`'s newly-exported `SubTab` type (`'grok' | 'suno' |
+     'sfx'`). `PromptLab.tsx` now force-switches its own sub-tab to
+     `focusKind` on a fresh navigation (previously unnecessary, since Grok
+     was already the default) and passes the focus/auto-insert props
+     through to whichever of `PromptLabPanel`/`SfxPanel` matches. `SfxPanel.
+     tsx` gained the same `autoOpen`/`onAutoInsert` wiring on its
+     `AiAssistantPanel` that `PromptLabPanel` already had, and
+     `SfxEntryCard.tsx` gained the same `autoExpand`-scrolls-into-view
+     prop `PromptEntryCard.tsx` already had — `PromptLabPanel.tsx` itself
+     needed no logic changes (it was already generic over `kind`), just a
+     doc-comment correction since its old comment claimed Grok-only.
+5. **Shared top-rated-entries/recipes technique context — built, matches
+   exactly.** New `src/labContext.ts` (`buildTechniqueContext`,
+   `assembleDraftRequest`) — a plain module with zero Electron/DOM
+   dependencies, callable from any of the three drafting flows regardless
+   of whether the underlying entries are `PromptEntry` (Grok/Suno) or
+   `SfxEntry` (SFX), via a small structural `TechniqueEntry`/
+   `TechniqueRecipe` shape (same "structural, not nominal" approach
+   `VersionCompare.tsx`'s existing `CompareEntry` already uses).
+   `buildTechniqueContext` ranks a lab's entries by overall average score
+   (reusing the existing `averageScores` from `ratingUtils.ts`), takes the
+   top 3, excludes anything with zero ratings (so the entry the caller just
+   created for *this* draft — always unrated — never quotes itself back as
+   "top"), and lists any promoted recipes by name/wording; an empty result
+   (nothing rated yet, no recipes yet) is an empty string, not empty-but-
+   noisy boilerplate. `assembleDraftRequest` folds that, a Style-notes
+   block, and the actual seed/instruction into one composed string,
+   dropping blank/whitespace-only blocks entirely so a project with no
+   Style notes and no rated history yet gets exactly the same plain
+   request Grok's flow always produced. All three `handleDraft*Prompt`
+   functions in `SceneList.tsx` call both helpers identically.
+
+  **Verification status (all five pieces):**
+  - Confirmed working on this machine: `npm run typecheck` and
+    `npm run build` both succeed (renderer + main process).
+  - Confirmed working on this machine, via a new scripted integration test
+    (`scripts/verifyStyleAndPhase8.cjs`, run through the real Electron
+    runtime against `dist-electron/`, same pattern as every prior phase's
+    manager-level verification — isolated throwaway userData/documents,
+    cleaned up afterward): Style CRUD round-trip and independence from
+    Idea; `AI_ASSISTANT_CONTEXTS` includes `'style'` (its `SYSTEM_PROMPTS`
+    entry is enforced to exist by TypeScript's `Record<AiAssistantContext,
+    string>` typing — a missing key fails `npm run build`, which this
+    script requires having already passed); `buildOutlineUserMessage`
+    correctly prepends labeled Style notes ahead of the script text (and
+    leaves the script text byte-for-byte unchanged when there are none);
+    `Scene.linkedSunoEntryIds` defaults to `[]`, accumulates a second,
+    distinct id on a second "draft" rather than replacing the first,
+    leaves `linkedSongAssetIds` untouched, and a hand-written legacy scene
+    missing the field normalizes to `[]` instead of throwing;
+    `Shot.linkedSfxIds` correctly accumulates two distinct drafted SFX
+    entry ids. Separately, `src/labContext.ts`'s two functions were
+    exercised directly against hand-built rating/recipe fixtures — the
+    real source, transpiled fresh via `esbuild` into a temp CommonJS
+    module (same "test the real source, not a reimplementation" technique
+    `scripts/verifyChromaKey.mjs` already uses for `src/chromaKey.ts`, since
+    this is a renderer-side module with no Electron dependency of its own)
+    — confirming correct top-N-by-rating ordering, exclusion of unrated
+    entries, recipe inclusion, and clean assembly with/without context
+    blocks. All 32 assertions passed.
+  - Confirmed working on this machine, via a scripted Playwright pass
+    against the real, built Electron window (`scripts/
+    verifyStyleAndPhase8UI.cjs`; Playwright installed ad-hoc for this pass
+    via `npm install --no-save playwright` and removed again immediately
+    after — not a permanent dependency, same discipline as every prior
+    phase's UI verification — isolated `--user-data-dir` plus a pre-seeded
+    `libraryLocation.json` pointing at a throwaway temp folder, same
+    technique the Grok draft-flow's own original verification used):
+    typed distinct, labeled text into the Style and Idea tabs, confirmed
+    Style notes survive an immediate tab switch (well inside the ~1.2s
+    autosave debounce — the exact data-loss scenario the autosave fix
+    targets) and a full app reload (genuinely hit disk, not just React
+    state), and confirmed Idea notes are untouched by any of it; clicked
+    "✨ Draft Grok Prompt" on a real shot and confirmed the composed,
+    still-unsent request contains the Style text and does **not** contain
+    the Idea text, and that clicking it never sends anything automatically
+    (zero messages, no error banner, despite this isolated profile having
+    no Anthropic API key configured at all — direct proof nothing was
+    auto-sent); clicked "🎵 Draft Suno Prompt" on a real scene twice and
+    confirmed two distinct Suno entries exist (not one reused) and the
+    scene's button label reflects the count; clicked "🔊 Draft SFX Prompt"
+    on a real shot twice and confirmed two distinct SFX entries exist and
+    both land checked in that shot's existing "Linked SFX" checkbox list.
+    All 15 assertions passed. The throwaway userData/library temp folders
+    were removed afterward; confirmed via direct disk inspection that
+    Dan's real `OneDrive/Documents/Dan's Video Studio/Projects` folder
+    still holds only his real "teafa" project, untouched by any of this.
+  - **Not yet confirmed: Dan's own hands-on pass.** Same standing
+    requirement as every feature in this project: the outline generator's
+    real style-notes injection and all three "Draft Prompt" flows'
+    real-model round trips (does a Style-notes-informed Grok/Suno/SFX
+    reply actually read as better/more on-brand in practice?) still need
+    Dan's own use with his real Anthropic key and real project content —
+    the scripted passes above prove the mechanism end-to-end (real context
+    assembly, real no-auto-send guarantee, real data-model persistence),
+    not whether the results are actually good.
+  - **Still not done / not verified:** no automated test suite (same
+    caveat as every phase — the scripts above are one-off verification
+    runs, not a committed CI suite). No UI surfaces a scene's/shot's
+    drafted Suno/SFX entries as a clickable list back to the Prompt Lab
+    (the scene shows a bare count, e.g. "(2 drafted)"; the shot's existing
+    "Linked SFX" checkboxes already give that view for free, but Suno has
+    no equivalent — not asked for, since the button's own click always
+    creates a fresh entry rather than needing to revisit an old one, but
+    worth noting for later if Dan wants to browse back to a specific past
+    Suno draft from the scene). The technique-context's "top 3" cutoff and
+    "average across all rated dimensions" ranking are reasonable defaults,
+    not something Dan specified a preference on — revisit if it surfaces
+    the wrong entries in practice.
+
 **Phase 7 — Export Tools.** MP4, GIF, still-frame, and clip exports as
 first-class features (GIF maker: select part of a clip/timeline → choose
 dimensions/FPS/quality/looping — not buried in a submenu). Builds on

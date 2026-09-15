@@ -125,6 +125,13 @@ ipcMain.handle('idea:save', (_e, projectId: string, content: string) =>
   productionManager.saveIdea(projectId, content),
 )
 
+// --- IPC: style (Phase 8's foundation, 2026-09-14) -------------------------
+
+ipcMain.handle('style:get', (_e, projectId: string) => productionManager.getStyle(projectId))
+ipcMain.handle('style:save', (_e, projectId: string, content: string) =>
+  productionManager.saveStyle(projectId, content),
+)
+
 // --- IPC: script ------------------------------------------------------
 
 ipcMain.handle('script:get', (_e, projectId: string) => productionManager.getScript(projectId))
@@ -146,7 +153,12 @@ ipcMain.handle(
     _e,
     projectId: string,
     sceneId: string,
-    updates: { title?: string; description?: string; linkedSongAssetIds?: string[] },
+    updates: {
+      title?: string
+      description?: string
+      linkedSongAssetIds?: string[]
+      linkedSunoEntryIds?: string[]
+    },
   ) => productionManager.updateScene(projectId, sceneId, updates),
 )
 
@@ -338,10 +350,17 @@ ipcMain.handle('ai:saveDraft', (_e, projectId: string, context: AiAssistantConte
 // scene/shot creation are two separate manager calls, wired together here —
 // aiAssistantManager only talks to Anthropic and parses the result;
 // productionManager owns actually writing scenes/shots (including the
-// add-vs-replace choice and the pre-replace backup).
-ipcMain.handle('ai:generateSceneOutline', (_e, projectId: string, scriptText: string) =>
-  aiAssistantManager.generateSceneOutline(projectId, scriptText),
-)
+// add-vs-replace choice and the pre-replace backup). As of the Style tab
+// (2026-09-14), this handler also fetches the project's Style notes and
+// passes them into the outline call as extra context — new here, since the
+// outline generator never used Idea notes before this; the renderer side
+// (GenerateOutlineDialog.tsx) doesn't need to know or change anything, this
+// orchestration is entirely a main-process concern, same as the add/replace
+// wiring already was.
+ipcMain.handle('ai:generateSceneOutline', async (_e, projectId: string, scriptText: string) => {
+  const style = await productionManager.getStyle(projectId)
+  return aiAssistantManager.generateSceneOutline(projectId, scriptText, style.content)
+})
 ipcMain.handle(
   'scenes:applyGenerated',
   (_e, projectId: string, generated: GeneratedSceneOutline[], mode: 'add' | 'replace') =>

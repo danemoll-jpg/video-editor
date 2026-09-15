@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Asset, ProjectSummary } from './projectManager'
-import type { GeneratedSceneOutline, Idea, Scene, Script, Shot } from './productionManager'
+import type { GeneratedSceneOutline, Idea, Scene, Script, Shot, Style } from './productionManager'
 import type {
   PromptEntry,
   PromptEntryInput,
@@ -44,6 +44,10 @@ const api = {
   saveIdea: (projectId: string, content: string): Promise<Idea> =>
     ipcRenderer.invoke('idea:save', projectId, content),
 
+  getStyle: (projectId: string): Promise<Style> => ipcRenderer.invoke('style:get', projectId),
+  saveStyle: (projectId: string, content: string): Promise<Style> =>
+    ipcRenderer.invoke('style:save', projectId, content),
+
   getScript: (projectId: string): Promise<Script> => ipcRenderer.invoke('script:get', projectId),
   saveScript: (projectId: string, content: string): Promise<Script> =>
     ipcRenderer.invoke('script:save', projectId, content),
@@ -54,7 +58,12 @@ const api = {
   updateScene: (
     projectId: string,
     sceneId: string,
-    updates: { title?: string; description?: string; linkedSongAssetIds?: string[] },
+    updates: {
+      title?: string
+      description?: string
+      linkedSongAssetIds?: string[]
+      linkedSunoEntryIds?: string[]
+    },
   ): Promise<Scene[]> => ipcRenderer.invoke('scenes:update', projectId, sceneId, updates),
   deleteScene: (projectId: string, sceneId: string): Promise<{ scenes: Scene[]; shots: Shot[] }> =>
     ipcRenderer.invoke('scenes:delete', projectId, sceneId),

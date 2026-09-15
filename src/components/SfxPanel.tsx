@@ -9,6 +9,22 @@ import AiAssistantPanel from './AiAssistantPanel'
 interface Props {
   projectId: string
   assets: Asset[]
+  /**
+   * The entry a "🔊 Draft SFX Prompt" shot navigation (Phase 8, 2026-09-14)
+   * landed on, if any — expands the AI Assistant and scrolls/expands that
+   * entry's card. `PromptLab` only ever passes this when its `focusKind` is
+   * `'sfx'`. Mirrors `PromptLabPanel`'s identical prop.
+   */
+  focusEntryId?: string | null
+  /**
+   * The entry id (if any) whose prompt text field should be overwritten
+   * automatically with the AI Assistant's *next* reply, instead of the
+   * normal manual-"Insert" flow — set only right after a fresh draft
+   * request was placed unsent into the composer.
+   */
+  autoInsertEntryId?: string | null
+  /** Called once that auto-insert has actually happened, so the caller can clear its armed state. */
+  onAutoInsertConsumed?: () => void
 }
 
 const EMPTY_FORM = {
@@ -39,7 +55,7 @@ function toCompareEntry(entry: SfxEntry): CompareEntry {
  * with a source-conditional set of extra fields (license/attribution for
  * licensed, settings for elevenlabs) instead of a fixed `kind`.
  */
-export default function SfxPanel({ projectId, assets }: Props) {
+export default function SfxPanel({ projectId, assets, focusEntryId, autoInsertEntryId, onAutoInsertConsumed }: Props) {
   const [entries, setEntries] = useState<SfxEntry[]>([])
   const [recipes, setRecipes] = useState<SfxRecipe[]>([])
   const [loading, setLoading] = useState(true)
@@ -176,10 +192,19 @@ export default function SfxPanel({ projectId, assets }: Props) {
         projectId={projectId}
         context="elevenlabs"
         label="SFX Assistant"
+        autoOpen={!!focusEntryId}
         onInsert={(text) => {
           setForm((f) => ({ ...f, promptText: text }))
           setShowForm(true)
         }}
+        onAutoInsert={
+          autoInsertEntryId
+            ? (text) => {
+                handleUpdateEntry(autoInsertEntryId, { promptText: text })
+                onAutoInsertConsumed?.()
+              }
+            : undefined
+        }
       />
 
       {error && <div className="error-banner">{error}</div>}
@@ -363,6 +388,7 @@ export default function SfxPanel({ projectId, assets }: Props) {
               parentEntry={entry.parentId ? entries.find((e) => e.id === entry.parentId) : undefined}
               compareSelected={compareIds.includes(entry.id)}
               compareDisabled={compareIds.length >= 2}
+              autoExpand={entry.id === focusEntryId}
               onToggleCompare={() => toggleCompare(entry.id)}
               onUpdate={(updates) => handleUpdateEntry(entry.id, updates)}
               onDelete={() => handleDeleteEntry(entry.id)}

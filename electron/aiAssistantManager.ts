@@ -17,7 +17,11 @@ import type { GeneratedSceneOutline } from './productionManager'
 //   aiAssistant/
 //     idea.json        suno.json
 //     script.json      elevenlabs.json
-//     grok.json
+//     grok.json        style.json
+//
+// 2026-09-14 added `style` as a fifth context, for the new Style tab
+// (src/components/StyleEditor.tsx) — same shape and same "just what's typed
+// here" scoping as every other context.
 //
 // Each context also gets a `<context>.draft.json` sibling file (added
 // 2026-09-14) holding the composer's in-progress, not-yet-sent text — see
@@ -43,9 +47,9 @@ import type { GeneratedSceneOutline } from './productionManager'
 // entered in the Settings screen) and never leaves the main process — this
 // file is the only place that calls the Anthropic API.
 
-export type AiAssistantContext = 'idea' | 'script' | PromptLabKind | 'elevenlabs'
+export type AiAssistantContext = 'idea' | 'style' | 'script' | PromptLabKind | 'elevenlabs'
 
-export const AI_ASSISTANT_CONTEXTS: AiAssistantContext[] = ['idea', 'script', 'grok', 'suno', 'elevenlabs']
+export const AI_ASSISTANT_CONTEXTS: AiAssistantContext[] = ['idea', 'style', 'script', 'grok', 'suno', 'elevenlabs']
 
 export interface AiMessage {
   id: string
@@ -61,6 +65,12 @@ const SYSTEM_PROMPTS: Record<AiAssistantContext, string> = {
   idea: `You are a creative brainstorming assistant helping a solo creator develop ideas, premises, and
 plots for short-form videos. Offer concrete, varied suggestions and ask focused follow-up questions
 rather than generic ones. Keep responses skimmable — favor short paragraphs or bullet lists.`,
+  style: `You are helping a solo creator define and refine the cross-cutting visual and tonal style rules
+for a short-form video project — things like camera behavior, recurring visual motifs, color/lighting
+mood, and character-treatment conventions that should hold consistent across every scene and shot.
+Help make vague impressions concrete and reusable (e.g. turn "keep it dreamy" into a specific, restatable
+rule). These notes get pulled into prompt-drafting and outline-generation elsewhere in the app, so favor
+clear, declarative statements over prose.`,
   script: `You are a writing assistant helping a solo creator draft and revise a script for a short-form
 video. Help with structure, pacing, dialogue, and voice. When asked to write or rewrite script text,
 give text that can be pasted directly into the script with minimal editing.`,
@@ -135,6 +145,24 @@ Whenever the script text contains any of the following, copy it into the relevan
 A generic paraphrase like "a couple sits on a couch" is wrong if the source text actually specifies the shot code, timing, quoted lyric, motion note, and comp note above — all of that detail must still be recognizable in the generated description, folded in alongside your own plain-language summary of the action, not dropped in favor of it. If a shot in the script has none of this structured detail, just describe it normally.
 
 Respond with the JSON array and nothing else.`
+
+/**
+ * Builds the actual user-message content sent to the model for
+ * "Generate Scenes & Shots" — the script text, prefixed with the project's
+ * Style notes (2026-09-14) as context when any exist. New context here: the
+ * outline generator never used Idea notes before this change, unlike the
+ * Grok/Suno/SFX "Draft Prompt" flows (see src/components/SceneList.tsx),
+ * which used to pull in Idea notes and now pull in Style notes instead — the
+ * outline generator's addition here is purely additive, not a swap. Exported
+ * (like `parseGeneratedOutline` below) so a scripted verification pass can
+ * assert the assembled text actually contains the Style notes, without
+ * spending real money on an Anthropic call just to check message assembly.
+ */
+export function buildOutlineUserMessage(scriptText: string, styleNotes: string): string {
+  const trimmedStyle = styleNotes.trim()
+  if (!trimmedStyle) return scriptText
+  return `Project style notes (from the Style tab), to keep in mind for every scene/shot description:\n${trimmedStyle}\n\n---\n\nScript:\n${scriptText}`
+}
 
 /**
  * Turns a raw model response into validated GeneratedSceneOutline[], or
@@ -305,7 +333,11 @@ export class AiAssistantManager {
    * decides whether to add or replace, since only it knows whether the
    * project already has scenes and what the user chose to do about that.
    */
-  async generateSceneOutline(projectId: string, scriptText: string): Promise<GeneratedSceneOutline[]> {
+  async generateSceneOutline(
+    projectId: string,
+    scriptText: string,
+    styleNotes = '',
+  ): Promise<GeneratedSceneOutline[]> {
     const trimmed = scriptText.trim()
     if (!trimmed) throw new Error('Write a script first — there is nothing to generate scenes from.')
 
@@ -322,7 +354,7 @@ export class AiAssistantManager {
         model: AI_MODEL,
         max_tokens: 8192,
         system: SCENE_OUTLINE_SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: trimmed }],
+        messages: [{ role: 'user', content: buildOutlineUserMessage(trimmed, styleNotes) }],
       })
       const textBlock = response.content.find((block) => block.type === 'text')
       raw = textBlock && textBlock.type === 'text' ? textBlock.text : ''

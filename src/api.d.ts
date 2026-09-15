@@ -3,7 +3,7 @@
 // electron/preload.ts, electron/projectManager.ts, and
 // electron/productionManager.ts.
 import type { Asset, AssetKind, ProjectSummary } from '../electron/projectManager'
-import type { GeneratedSceneOutline, Idea, Scene, Script, Shot } from '../electron/productionManager'
+import type { GeneratedSceneOutline, Idea, Scene, Script, Shot, Style } from '../electron/productionManager'
 import type {
   PromptEntry,
   PromptEntryInput,
@@ -56,6 +56,7 @@ export type {
   AssetKind,
   ProjectSummary,
   Idea,
+  Style,
   Scene,
   Script,
   Shot,
@@ -129,6 +130,9 @@ declare global {
       getIdea(projectId: string): Promise<Idea>
       saveIdea(projectId: string, content: string): Promise<Idea>
 
+      getStyle(projectId: string): Promise<Style>
+      saveStyle(projectId: string, content: string): Promise<Style>
+
       getScript(projectId: string): Promise<Script>
       saveScript(projectId: string, content: string): Promise<Script>
 
@@ -137,7 +141,12 @@ declare global {
       updateScene(
         projectId: string,
         sceneId: string,
-        updates: { title?: string; description?: string; linkedSongAssetIds?: string[] },
+        updates: {
+          title?: string
+          description?: string
+          linkedSongAssetIds?: string[]
+          linkedSunoEntryIds?: string[]
+        },
       ): Promise<Scene[]>
       deleteScene(projectId: string, sceneId: string): Promise<{ scenes: Scene[]; shots: Shot[] }>
       moveScene(projectId: string, sceneId: string, direction: 'up' | 'down'): Promise<Scene[]>

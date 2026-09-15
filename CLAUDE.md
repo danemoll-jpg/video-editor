@@ -103,7 +103,11 @@ browser treating it as cross-origin.
   ids — never the original filename — so there's no manual versioning like
   `final_v2_FINAL.mp4`; the original name is preserved in `assets.json` for
   display only), `script/script.json`+`scenes.json`+`shots.json` (the
-  Phase 2 script/scenes/shots data), and `promptlab/` (Grok/Suno prompt
+  Phase 2 script/scenes/shots data), `idea/idea.json` (Phase 4 — freeform
+  brainstorming notes) and `style/style.json` (2026-09-14 — freeform
+  cross-cutting visual/tonal rules; see `ProductionManager`'s header
+  comment for why these are two separate documents, not one), and
+  `promptlab/` (Grok/Suno prompt
   histories + recipes, one JSON file pair per lab, plus the unified SFX
   system's `sfxEntries.json`+`sfxRecipes.json`). A project built before the
   Phase 5 SFX merge may still have leftover `sfxLibrary.json`/
@@ -137,18 +141,36 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
-**NEW, PRIORITY (2026-09-14), being built while Dan tests Phase 7: a
-Style tab, plus Phase 8 built around it.** A new Style tab (mirrors
-Idea/Script, autosave) holds cross-cutting visual/tonal rules. Style
-notes **replace** Idea notes as context for AI prompt drafting (a real
-revision to the already-built Grok flow) and get **added** to the scene/
-shot outline generator (new context there, not a swap). Phase 8 extends
-the review-before-send "Draft Prompt" pattern to Suno (per scene) and SFX
-(per shot) — unlike Grok's one-per-shot, these always draft a brand-new
-entry per click, since scenes/shots already allow multiple. All three
-labs' drafts auto-include that lab's top-rated entries + recipes + Style
-notes, assembled once per new entry, not re-injected every turn. See
-TODO.md's Current Objective for full scope — not yet built.
+**NEW, PRIORITY (2026-09-14/15), Style tab + Phase 8 built while Dan tests
+Phase 7 — not yet confirmed by Dan's own hands.** A new Style tab (mirrors
+Idea/Script exactly: freeform text, debounced autosave, an embedded AI
+Assistant) holds cross-cutting visual/tonal rules that need reasserting at
+every generation step, unlike Idea notes (see `productionManager.ts`'s
+header comment for the full rationale). Style notes now **replace** Idea
+notes as context for Grok/Suno/SFX prompt drafting (a real revision to the
+already-built Grok flow) and are **added** to the scene/shot outline
+generator (new context there, not a swap — `generateSceneOutline` gained
+an optional `styleNotes` parameter, fetched and passed in by
+`electron/main.ts`'s IPC handler so the renderer side needed no change).
+Phase 8 extends the review-before-send "Draft Prompt" pattern to Suno
+("🎵 Draft Suno Prompt" per scene, linking into a new `Scene.
+linkedSunoEntryIds` kept separate from the finished-asset `
+linkedSongAssetIds`) and SFX ("🔊 Draft SFX Prompt" per shot, reusing the
+existing `Shot.linkedSfxIds` — no new field needed there, since the
+unified SFX system's entries already serve both the finished-sound and
+draft-prompt roles) — unlike Grok's one-per-shot, both always draft a
+brand-new entry per click, confirmed explicitly, since scenes/shots
+already allow multiple linked songs/SFX. All three labs' drafts
+auto-include that lab's own top-rated entries + promoted recipes + the
+new Style notes, assembled once per new entry via a shared
+`src/labContext.ts` helper (`buildTechniqueContext`/`assembleDraftRequest`)
+— not re-injected on every AI Assistant follow-up turn. The "Draft Prompt"
+navigation plumbing (`ProjectView`'s prior Grok-only
+`promptLabFocusEntryId`/`onOpenGrokEntry`) was generalized to carry a
+`kind` (`'grok' | 'suno' | 'sfx'`, exported as `PromptLab.tsx`'s `SubTab`
+type) so it can land on and auto-expand/auto-insert into any of the three
+sub-tabs, not just Grok's. See TODO.md's Current Objective for the full
+build/verification writeup, reported per-piece as this project's habit is.
 
 **Phase 7 (Export Tools) is built, not yet confirmed by Dan** —
 MP4/GIF/still-frame/clip export as first-class features, building on

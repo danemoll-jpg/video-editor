@@ -22,6 +22,22 @@ import { SHOT_STATUSES, type ShotStatus } from './shotStatus'
 // near-identical code" principle — it's one extra document, not a new
 // subsystem shape.
 //
+// 2026-09-14 (Style tab, Phase 8's foundation) added a third such document,
+// `style/style.json` — same trivial shape and pattern as Idea/Script again.
+// Style is deliberately its own tab rather than folded into Idea: Idea notes
+// are meant to flow downstream and get baked into the Script once (re-
+// including them at generation time would be redundant with what's already
+// in the shot/scene descriptions using them), whereas Style holds cross-
+// cutting visual/tonal rules that nothing downstream captures automatically
+// — "camera stays locked unless it's an emotional beat," "Abi is always
+// slightly translucent" — and need to be reasserted at *every* generation
+// step, not just baked in once. As of this change, Style notes (not Idea
+// notes) are what gets pulled into AI prompt-drafting context (see
+// aiAssistantManager.ts and src/components/SceneList.tsx's draft-prompt
+// handlers) and into the scene/shot outline generator
+// (`generateSceneOutline`); Idea notes go back to being purely for
+// brainstorming, pulled into no generation step.
+//
 // A shot moves through a fixed status sequence as production progresses
 // (see electron/shotStatus.ts): Planned -> Prompt Ready -> Generated ->
 // Imported -> Edited -> Complete. `linkedAssetId` is an optional pointer
@@ -53,6 +69,23 @@ import { SHOT_STATUSES, type ShotStatus } from './shotStatus'
 // Defaults to `null` for shots read from before this field existed (see
 // `normalizeShot` below).
 //
+// Phase 8 (2026-09-14) added a "🎵 Draft Suno Prompt" button on scenes,
+// mirroring "✨ Draft Grok Prompt" — but unlike Grok's one-entry-per-shot,
+// Suno always drafts a brand-new Suno Prompt Lab entry on every click
+// (scenes already allow multiple linked songs, so a scene might genuinely
+// want several draft song directions on the go at once). That means a
+// *list*, not an optional single id: scenes got `linkedSunoEntryIds`, ids
+// into the Suno Prompt Lab (kind: 'suno') — deliberately separate from the
+// pre-existing `linkedSongAssetIds`, which is for finished, already-
+// imported song *assets*, not draft prompt-lab entries. Same list-not-
+// single-id shape as `linkedSfxIds` above, for the same reason: shots
+// already reuse `linkedSfxIds` for their own "🔊 Draft SFX Prompt" button
+// (every draft's new entry id is simply appended to that existing list, so
+// SFX needed no new field at all — Suno's finished-asset/draft-entry split
+// doesn't exist for SFX, since the unified SFX system's entries already
+// serve both roles). Defaults to `[]` for scenes read from before this
+// field existed (see `normalizeScene` below).
+//
 // Within a scene's shots (and within the project's scenes), `order` is
 // always kept as a contiguous 0..n-1 permutation — every mutation either
 // appends the next integer or renumbers/swaps in place — so callers can
@@ -68,6 +101,11 @@ export interface Idea {
   updatedAt: string
 }
 
+export interface Style {
+  content: string
+  updatedAt: string
+}
+
 export interface Scene {
   id: string
   title: string
@@ -75,6 +113,8 @@ export interface Scene {
   order: number
   /** Ids into assets.json (audio assets) — the songs linked to this scene. Not capped at one. */
   linkedSongAssetIds: string[]
+  /** Ids into the Suno Prompt Lab (promptLabManager.ts, kind 'suno') — this scene's drafted prompt entries. Not capped at one; every "🎵 Draft Suno Prompt" click appends a new one. */
+  linkedSunoEntryIds: string[]
   createdAt: string
   updatedAt: string
 }
@@ -122,12 +162,16 @@ export interface GeneratedSceneOutline {
 
 const EMPTY_SCRIPT: Script = { content: '', updatedAt: '' }
 const EMPTY_IDEA: Idea = { content: '', updatedAt: '' }
+const EMPTY_STYLE: Style = { content: '', updatedAt: '' }
 
 function scriptPath(dir: string): string {
   return path.join(dir, 'script', 'script.json')
 }
 function ideaPath(dir: string): string {
   return path.join(dir, 'idea', 'idea.json')
+}
+function stylePath(dir: string): string {
+  return path.join(dir, 'style', 'style.json')
 }
 function scenesPath(dir: string): string {
   return path.join(dir, 'script', 'scenes.json')
@@ -140,9 +184,13 @@ function sortByOrder<T extends { order: number }>(items: T[]): T[] {
   return [...items].sort((a, b) => a.order - b.order)
 }
 
-/** Backfills `linkedSongAssetIds` for scenes read from before that field existed. */
+/** Backfills `linkedSongAssetIds`/`linkedSunoEntryIds` for scenes read from before those fields existed. */
 function normalizeScene(scene: Scene): Scene {
-  return { ...scene, linkedSongAssetIds: scene.linkedSongAssetIds ?? [] }
+  return {
+    ...scene,
+    linkedSongAssetIds: scene.linkedSongAssetIds ?? [],
+    linkedSunoEntryIds: scene.linkedSunoEntryIds ?? [],
+  }
 }
 
 /** Backfills `linkedSfxIds`/`linkedGrokEntryId` for shots read from before those fields existed. */
@@ -191,6 +239,21 @@ export class ProductionManager {
     return idea
   }
 
+  // --- Style ----------------------------------------------------------
+
+  async getStyle(projectId: string): Promise<Style> {
+    const dir = await requireProjectDir(projectId)
+    return readJsonFile<Style>(stylePath(dir), EMPTY_STYLE)
+  }
+
+  async saveStyle(projectId: string, content: string): Promise<Style> {
+    const dir = await requireProjectDir(projectId)
+    const style: Style = { content, updatedAt: new Date().toISOString() }
+    await writeJsonFile(stylePath(dir), style)
+    await touchProject(dir)
+    return style
+  }
+
   // --- Script ---------------------------------------------------------
 
   async getScript(projectId: string): Promise<Script> {
@@ -226,6 +289,7 @@ export class ProductionManager {
       description,
       order: scenes.length,
       linkedSongAssetIds: [],
+      linkedSunoEntryIds: [],
       createdAt: now,
       updatedAt: now,
     })
@@ -237,7 +301,7 @@ export class ProductionManager {
   async updateScene(
     projectId: string,
     sceneId: string,
-    updates: { title?: string; description?: string; linkedSongAssetIds?: string[] },
+    updates: { title?: string; description?: string; linkedSongAssetIds?: string[]; linkedSunoEntryIds?: string[] },
   ): Promise<Scene[]> {
     const dir = await requireProjectDir(projectId)
     const scenes = await this.readScenes(dir)
@@ -251,6 +315,7 @@ export class ProductionManager {
     }
     if (updates.description !== undefined) scene.description = updates.description
     if (updates.linkedSongAssetIds !== undefined) scene.linkedSongAssetIds = updates.linkedSongAssetIds
+    if (updates.linkedSunoEntryIds !== undefined) scene.linkedSunoEntryIds = updates.linkedSunoEntryIds
     scene.updatedAt = new Date().toISOString()
 
     await this.writeScenes(dir, scenes)
@@ -456,6 +521,7 @@ export class ProductionManager {
         description: g.description ?? '',
         order: sceneOrder++,
         linkedSongAssetIds: [],
+        linkedSunoEntryIds: [],
         createdAt: now,
         updatedAt: now,
       }

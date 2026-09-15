@@ -6,6 +6,7 @@ export interface SceneUpdates {
   title?: string
   description?: string
   linkedSongAssetIds?: string[]
+  linkedSunoEntryIds?: string[]
 }
 
 interface Props {
@@ -24,6 +25,12 @@ interface Props {
   onMoveShot: (shotId: string, direction: 'up' | 'down') => void
   onDraftGrokPrompt: (shot: Shot) => void
   draftingGrokPromptShotId: string | null
+  /** "🎵 Draft Suno Prompt" (Phase 8) — always drafts a brand-new Suno Prompt Lab entry for this scene. */
+  onDraftSunoPrompt: (scene: Scene) => void
+  draftingSunoPromptSceneId: string | null
+  /** "🔊 Draft SFX Prompt" (Phase 8) — always drafts a brand-new SFX entry for a shot. */
+  onDraftSfxPrompt: (shot: Shot) => void
+  draftingSfxPromptShotId: string | null
 }
 
 export default function SceneCard({
@@ -42,6 +49,10 @@ export default function SceneCard({
   onMoveShot,
   onDraftGrokPrompt,
   draftingGrokPromptShotId,
+  onDraftSunoPrompt,
+  draftingSunoPromptSceneId,
+  onDraftSfxPrompt,
+  draftingSfxPromptShotId,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(scene.title)
@@ -109,6 +120,16 @@ export default function SceneCard({
         <div className="spacer" />
         {!editing && (
           <div className="scene-card__actions">
+            <button
+              className="btn"
+              disabled={draftingSunoPromptSceneId === scene.id}
+              title="Create a new Suno Prompt Lab entry for this scene and place a draft AI Assistant request (ready to review and send) in its composer — always drafts a fresh entry, since a scene can want more than one song direction"
+              onClick={() => onDraftSunoPrompt(scene)}
+            >
+              {draftingSunoPromptSceneId === scene.id
+                ? 'Opening…'
+                : `🎵 Draft Suno Prompt${scene.linkedSunoEntryIds.length > 0 ? ` (${scene.linkedSunoEntryIds.length} drafted)` : ''}`}
+            </button>
             <button className="btn" disabled={isFirst} onClick={() => onMove('up')} title="Move up">
               ↑
             </button>
@@ -163,6 +184,8 @@ export default function SceneCard({
                 onMove={(direction) => onMoveShot(shot.id, direction)}
                 onDraftGrokPrompt={() => onDraftGrokPrompt(shot)}
                 draftingGrokPrompt={draftingGrokPromptShotId === shot.id}
+                onDraftSfxPrompt={() => onDraftSfxPrompt(shot)}
+                draftingSfxPrompt={draftingSfxPromptShotId === shot.id}
               />
             ))
           )}

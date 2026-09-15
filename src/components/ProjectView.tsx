@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import type { Asset, AssetKind, ProjectSummary } from '../api'
 import { formatBytes, formatDate } from '../format'
 import IdeaEditor from './IdeaEditor'
+import StyleEditor from './StyleEditor'
 import ScriptEditor from './ScriptEditor'
 import SceneList from './SceneList'
-import PromptLab from './PromptLab'
+import PromptLab, { type SubTab as PromptFocusKind } from './PromptLab'
 import MediaLibrary from './MediaLibrary'
 import EditorView from './EditorView'
 
@@ -22,7 +23,7 @@ const KIND_LABELS: Record<AssetKind, string> = {
 
 const KIND_ORDER: AssetKind[] = ['video', 'image', 'audio', 'other']
 
-type Tab = 'assets' | 'idea' | 'script' | 'scenes' | 'promptlab' | 'media' | 'editor'
+type Tab = 'assets' | 'idea' | 'style' | 'script' | 'scenes' | 'promptlab' | 'media' | 'editor'
 
 export default function ProjectView({ projectId, onBack }: Props) {
   const [project, setProject] = useState<ProjectSummary | null>(null)
@@ -32,28 +33,32 @@ export default function ProjectView({ projectId, onBack }: Props) {
   const [importing, setImporting] = useState(false)
   const [extractingAudioId, setExtractingAudioId] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('assets')
-  // "✨ Draft Grok Prompt" (2026-09-14): the entry id a shot navigation should
-  // land Prompt Lab's Grok sub-tab on, expanded and ready. Cleared whenever
-  // the user leaves the Prompt Lab tab, so a later *manual* visit to Prompt
-  // Lab doesn't re-trigger an old navigation's auto-expand/auto-scroll.
+  // "Draft Prompt" navigation (2026-09-14: Grok; extended to Suno and SFX
+  // for Phase 8): which Prompt Lab sub-tab and entry a shot/scene
+  // navigation should land on, expanded and ready. Cleared whenever the
+  // user leaves the Prompt Lab tab, so a later *manual* visit to Prompt Lab
+  // doesn't re-trigger an old navigation's auto-expand/auto-scroll.
+  const [promptLabFocusKind, setPromptLabFocusKind] = useState<PromptFocusKind | null>(null)
   const [promptLabFocusEntryId, setPromptLabFocusEntryId] = useState<string | null>(null)
-  // Revised the same day: which entry (if any) the Grok AI Assistant's
-  // *next* reply should auto-insert into, instead of requiring a manual
-  // "Insert" click — armed only on a fresh draft-request navigation (a
-  // brand-new entry, its draft request just placed unsent into the
-  // composer by `SceneList`), never on a plain re-navigate to an
-  // already-linked entry. Cleared the same way as the focus id above, plus
-  // as soon as the auto-insert actually fires (`handleAutoInsertConsumed`).
+  // Which entry (if any) that sub-tab's AI Assistant's *next* reply should
+  // auto-insert into, instead of requiring a manual "Insert" click — armed
+  // only on a fresh draft-request navigation (a brand-new entry, its draft
+  // request just placed unsent into the composer by `SceneList`), never on
+  // a plain re-navigate to an already-linked Grok entry. Cleared the same
+  // way as the focus id above, plus as soon as the auto-insert actually
+  // fires (`handleAutoInsertConsumed`).
   const [promptLabAutoInsertEntryId, setPromptLabAutoInsertEntryId] = useState<string | null>(null)
 
   useEffect(() => {
     if (tab !== 'promptlab') {
+      setPromptLabFocusKind(null)
       setPromptLabFocusEntryId(null)
       setPromptLabAutoInsertEntryId(null)
     }
   }, [tab])
 
-  function handleOpenGrokEntry(entryId: string, armAutoInsert: boolean) {
+  function handleOpenPromptEntry(kind: PromptFocusKind, entryId: string, armAutoInsert: boolean) {
+    setPromptLabFocusKind(kind)
     setPromptLabFocusEntryId(entryId)
     setPromptLabAutoInsertEntryId(armAutoInsert ? entryId : null)
     setTab('promptlab')
@@ -170,6 +175,12 @@ export default function ProjectView({ projectId, onBack }: Props) {
           Idea
         </button>
         <button
+          className={`tab-bar__tab ${tab === 'style' ? 'tab-bar__tab--active' : ''}`}
+          onClick={() => setTab('style')}
+        >
+          Style
+        </button>
+        <button
           className={`tab-bar__tab ${tab === 'script' ? 'tab-bar__tab--active' : ''}`}
           onClick={() => setTab('script')}
         >
@@ -265,6 +276,12 @@ export default function ProjectView({ projectId, onBack }: Props) {
         </div>
       )}
 
+      {tab === 'style' && (
+        <div className="tab-panel">
+          <StyleEditor projectId={projectId} />
+        </div>
+      )}
+
       {tab === 'script' && (
         <div className="tab-panel">
           <ScriptEditor projectId={projectId} />
@@ -273,7 +290,7 @@ export default function ProjectView({ projectId, onBack }: Props) {
 
       {tab === 'scenes' && (
         <div className="tab-panel">
-          <SceneList projectId={projectId} assets={assets} onOpenGrokEntry={handleOpenGrokEntry} />
+          <SceneList projectId={projectId} assets={assets} onOpenPromptEntry={handleOpenPromptEntry} />
         </div>
       )}
 
@@ -282,8 +299,9 @@ export default function ProjectView({ projectId, onBack }: Props) {
           <PromptLab
             projectId={projectId}
             assets={assets}
-            focusGrokEntryId={promptLabFocusEntryId}
-            autoInsertGrokEntryId={promptLabAutoInsertEntryId}
+            focusKind={promptLabFocusKind}
+            focusEntryId={promptLabFocusEntryId}
+            autoInsertEntryId={promptLabAutoInsertEntryId}
             onAutoInsertConsumed={handleAutoInsertConsumed}
           />
         </div>

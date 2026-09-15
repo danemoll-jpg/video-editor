@@ -17,17 +17,18 @@ interface Props {
   kind: PromptLabKind
   assets: Asset[]
   /**
-   * The entry a "✨ Draft Grok Prompt" shot navigation (2026-09-14) landed
-   * on, if any — expands the AI Assistant and scrolls/expands that entry's
-   * card. `PromptLab` only ever passes this for `kind === 'grok'`.
+   * The entry a "Draft Prompt" navigation (2026-09-14: Grok, then Suno for
+   * Phase 8) landed on, if any — expands the AI Assistant and scrolls/
+   * expands that entry's card. `PromptLab` only ever passes this when its
+   * `focusKind` matches this panel's own `kind`.
    */
   focusEntryId?: string | null
   /**
    * The entry id (if any) whose prompt text field should be overwritten
    * automatically with the AI Assistant's *next* reply, instead of the
    * normal manual-"Insert" flow — set only right after a fresh draft
-   * request was placed unsent into the composer (same 2026-09-14 revision
-   * as `focusEntryId` above; also grok-only).
+   * request was placed unsent into the composer (same revision as
+   * `focusEntryId` above).
    */
   autoInsertEntryId?: string | null
   /** Called once that auto-insert has actually happened, so the caller can clear its armed state. */

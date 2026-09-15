@@ -36,6 +36,15 @@ interface Props {
    */
   onDraftGrokPrompt: () => void
   draftingGrokPrompt: boolean
+  /**
+   * "🔊 Draft SFX Prompt" (Phase 8, 2026-09-14) — always creates a
+   * brand-new SFX entry for this shot (unlike Grok, never reopens an
+   * existing one) and appends it to `linkedSfxIds`. The actual create/link/
+   * draft work happens up in `SceneList`, same division of labor as
+   * `onDraftGrokPrompt`.
+   */
+  onDraftSfxPrompt: () => void
+  draftingSfxPrompt: boolean
 }
 
 export default function ShotCard({
@@ -49,6 +58,8 @@ export default function ShotCard({
   onMove,
   onDraftGrokPrompt,
   draftingGrokPrompt,
+  onDraftSfxPrompt,
+  draftingSfxPrompt,
 }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [title, setTitle] = useState(shot.title)
@@ -114,6 +125,16 @@ export default function ShotCard({
           onClick={onDraftGrokPrompt}
         >
           {draftingGrokPrompt ? 'Opening…' : shot.linkedGrokEntryId ? '✨ Open Grok Prompt' : '✨ Draft Grok Prompt'}
+        </button>
+        <button
+          className="btn"
+          disabled={draftingSfxPrompt}
+          title="Create a new SFX entry for this shot and place a draft AI Assistant request (ready to review and send) in its composer — always drafts a fresh entry, since a shot can want more than one sound effect"
+          onClick={onDraftSfxPrompt}
+        >
+          {draftingSfxPrompt
+            ? 'Opening…'
+            : `🔊 Draft SFX Prompt${shot.linkedSfxIds.length > 0 ? ` (${shot.linkedSfxIds.length})` : ''}`}
         </button>
         <div className="spacer" />
         <button className="btn" disabled={isFirst} onClick={() => onMove('up')} title="Move up">

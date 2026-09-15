@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Asset, SfxEntry, SfxEntryUpdates, SfxRatingInput } from '../api'
 import { SFX_RATING_DIMENSIONS, SFX_SOURCE_LABELS, SFX_PROMPT_PLACEHOLDER, type SfxSource } from '../../electron/sfxTypes'
 import { formatDate } from '../format'
@@ -18,6 +18,13 @@ interface Props {
   onDeleteRating: (ratingId: string) => void
   onPromote: (name: string) => void
   onNewVersion: () => void
+  /**
+   * Starts this card expanded and scrolled into view — set by `SfxPanel`
+   * when this is the entry a "🔊 Draft SFX Prompt" shot navigation
+   * (Phase 8, 2026-09-14) landed on. Mirrors `PromptEntryCard`'s identical
+   * prop.
+   */
+  autoExpand?: boolean
 }
 
 function emptyScores(): Record<string, number> {
@@ -38,8 +45,15 @@ export default function SfxEntryCard({
   onDeleteRating,
   onPromote,
   onNewVersion,
+  autoExpand,
 }: Props) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(!!autoExpand)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (autoExpand) rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [editing, setEditing] = useState(false)
   const [source, setSource] = useState<SfxSource>(entry.source)
   const [name, setName] = useState(entry.name)
@@ -124,7 +138,7 @@ export default function SfxEntryCard({
   }
 
   return (
-    <div className="prompt-entry-card">
+    <div className="prompt-entry-card" ref={rootRef}>
       <div className="prompt-entry-card__row">
         <input
           type="checkbox"
