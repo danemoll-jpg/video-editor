@@ -1226,6 +1226,173 @@ now visible (2026-09-15) — some overlap, scoped together:**
    action, not just the prior round's scripted/synthetic overdriven-file
    test.
 
+**All five items above — BUILT (2026-09-15), not yet confirmed by Dan's own
+hands.** Reporting each separately, as this project's habit is:
+
+1. **Playhead — built.** `AudioEditor.tsx`'s waveform draw effect now
+   renders a real, visible 2px-wide white playhead line (plus a small
+   triangular handle at the top so it reads clearly against a busy
+   waveform) at `playhead * pixelsPerSecond`. Click-to-seek and drag-select
+   are now properly distinguished — previously every mousedown moved the
+   playhead, blurring "click" and "drag" together; a new
+   `CLICK_DRAG_THRESHOLD_PX` (3px) comparison in `handleWaveformMouseUp`
+   means a plain click (no meaningful pointer movement) seeks the playhead
+   and clears any selection, while a real drag past that threshold produces
+   a trim-range selection and leaves the playhead untouched, matching the
+   ask's "a plain click (not a drag)" literally. Live tracking during
+   playback: `play()` now starts a `requestAnimationFrame` loop that
+   computes `playhead = playFrom + (ctx.currentTime - startTime)` every
+   frame — driven by the real `AudioContext` clock, not a fixed-interval
+   timer, so it tracks actual playback exactly including any scheduling
+   drift — and a new effect auto-scrolls the horizontally-scrolling
+   waveform container to keep the playhead in view if it scrolls off-screen
+   during playback. **"Sets where the next Play starts from" is now real,
+   not just cosmetic:** `play()` previously always started from
+   `spec.trimStart`; it now starts from `clamp(playhead, trimStart,
+   trimEnd)`, with the fade-in/fade-out/envelope gain scheduling all
+   adjusted to account for how far into the trimmed window that start point
+   already is (continuing a fade or envelope ramp mid-curve rather than
+   restarting it from scratch) — a new `sliceCurveFrom` helper in
+   `audioEditPreview.ts` re-samples a fade-curve array from a given
+   fraction onward for this. `stopPlayback` now explicitly detaches
+   `onended` before calling `source.stop()`, so a manual Stop doesn't also
+   trigger the natural-completion handler (which snaps the playhead to
+   `trimEnd`) — those are two different endings and needed to stay
+   distinct.
+2. **Sliders for trim/fade/split — built.** Real `<input type="range">`
+   sliders now sit alongside (not replacing) the existing numeric fields
+   for Trim Start, Trim End, Fade In duration, Fade Out duration, and Split
+   At — each bound to a sensible real range: trim start/end to `[0,
+   trimEnd]`/`[trimStart, duration]` respectively (so one can never be
+   dragged past the other), fade in/out to `[0, trimmedDuration]` (a fade
+   longer than the kept clip makes no sense), split to `[0, duration]`. Each
+   slider and its paired numeric field write to the same `spec` state, so
+   they always stay in sync regardless of which one was used last — a new
+   `.audio-editor__field-with-slider` wrapper (`styles.css`) keeps the pair
+   stacked without the numeric field's boxed/bordered styling leaking onto
+   the plain range input.
+3. **Volume-envelope point slider — built.** Clicking an envelope point
+   (on the strip, or its row in the numeric list below) now selects it —
+   new `selectedPointIndex` state, highlighted on the envelope strip itself
+   (a larger, gold-outlined dot instead of the plain blue one) and in the
+   list (a highlighted row) so it's clear which point a subsequent slider
+   drag will affect. A new "Selected point" panel appears once a point is
+   selected, showing its time and a gain slider (range 0–2, matching the
+   existing numeric field's range exactly) plus a live dB readout once gain
+   reaches unity or above — dragging the point on the strip, editing the
+   numeric list, and this new slider all write to the exact same
+   `spec.envelope[i].gain`, so all three stay consistent with each other.
+4. **dB/amplitude vertical axis — built.** A new fixed-width (44px)
+   `.audio-editor__db-axis` canvas sits to the left of the horizontally-
+   scrolling waveform/time-axis/envelope column (a new
+   `.audio-editor__waveform-row` flex row wraps both) — fixed-width and
+   outside the scrolling container specifically because, unlike the time
+   axis, amplitude gridlines don't move with horizontal scroll/zoom, so
+   scrolling them along with the waveform would be wrong. Draws real
+   gridlines at the requested levels (0, -6, -12, -24, -48 dB, via a new
+   `DB_GRIDLINE_LEVELS` constant and `dbToAmplitude` helper in
+   `audioEditPreview.ts` converting each dB value to a linear amplitude
+   ratio for its y-offset from center) with text labels, both above and
+   below the waveform's vertical center (amplitude is symmetric around
+   silence). The same gridlines are echoed as faint reference lines drawn
+   directly across the waveform canvas itself (not just the side axis), so
+   amplitude is readable against the waveform without eye travel to the
+   axis strip — a deliberate small addition beyond the literal ask, since a
+   side-only axis is harder to actually use while looking at the waveform.
+5. **Clipping indicator re-verified via a real interactive action — built
+   (a real gap closed, not just re-tested) and verified.** Investigating
+   this surfaced a genuine, previously-unnoticed structural gap: the
+   existing clipping indicator (`computeWaveformPeaks`'s `clipped` flag)
+   only ever reflects the *source* file's own raw samples — it has no
+   knowledge of the volume envelope at all, so raising an envelope point via
+   item 3's new slider could never have made it light up, no matter how far
+   it's pushed. The literal ask ("re-verify the already-built... indicator
+   actually shows up on a real user action") would have failed outright
+   without this fix, so it's built as part of closing this item, not
+   deferred: a new `computeEffectiveClipped` in `audioEditPreview.ts`
+   computes a second, edit-aware clip flag per waveform column — source
+   peak amplitude × the envelope gain in effect at that point (via the
+   existing `envelopeGainAt` helper) — reusing the already-downsampled
+   peaks rather than rescanning raw PCM, so it's cheap to recompute on
+   every envelope drag. The waveform now renders red wherever *either* flag
+   is set (`peaks.clipped[x] === 1 || effectiveClipped[x] === 1`), so a
+   loud source recording and a user pushing an envelope point too high both
+   correctly show the same warning.
+
+  **Verification status (all five items):**
+  - Confirmed working on this machine: `npm run typecheck` and `npm run
+    build` both succeed (renderer + main process).
+  - **CONFIRMED (2026-09-15), UI-level click-through — driven by Claude via
+    a new scripted Playwright pass
+    (`scripts/verifyAudioEditorPlayheadSlidersDbAxis.cjs`) against the
+    real, built Electron window, not Dan's own hands (same technique and
+    same reason as every prior phase's UI verification)** — **22/22
+    assertions passed**, against two real seeded tones (a quiet 10s tone
+    for playhead/slider testing, a separate moderate-volume 5s tone
+    specifically tuned — 0.6 peak amplitude, safely under the clip
+    threshold at unity gain but genuinely exceeding full scale at the
+    envelope's 2x maximum — for item 5's real interactive clipping test).
+    Playhead: confirmed a plain click ~4s into the clip moves the playhead
+    there (read back from the toolbar text) and that a real white line is
+    drawn on the waveform canvas at that exact pixel column (not just a
+    text-only update); confirmed a genuine drag-select (105px of real OS-
+    level mouse movement) leaves the playhead exactly where an earlier
+    click put it and produces a real "Trim to Selection" button instead,
+    confirming click vs. drag are actually distinguished, not just
+    theoretically; confirmed clicking near the 1s mark then pressing ▶ Play
+    starts playback from ~1s (not 0s), and confirmed the playhead kept
+    advancing during real playback (1.1s → 1.8s over ~700ms of real wall-
+    clock waiting), i.e. genuinely synced to the `AudioContext` clock, not
+    a static readout. Sliders: confirmed at least 5 real `<input
+    type="range">` sliders are present; confirmed dragging the Trim Start
+    slider updates its paired numeric field and, separately, that typing
+    into the numeric field updates the slider back (true two-way sync, not
+    one slider silently drifting from its field); confirmed the Fade In
+    slider's `max` attribute is bound to the clip's real 5s duration, not
+    an arbitrary constant. dB axis: confirmed the axis canvas's fixed
+    44px width and full 232px stacked height (time axis + waveform +
+    envelope), confirmed it's actually visible on screen, confirmed it
+    drew real non-background gridline/label pixel content. Envelope point
+    slider + clipping re-verification (items 3+5 together, as they're
+    related): confirmed the seeded 0.6-peak tone shows zero clip-red
+    pixels before any edit (a valid non-clipping baseline — the negative
+    control this test needs); confirmed clicking the envelope strip
+    creates and selects a point, revealing its own gain slider (correct
+    0–2 max, matching the field it's paired with); confirmed dragging that
+    real slider to its 2x maximum causes the already-built red clipping
+    indicator to actually appear (58,716 clip-red pixels found) — this is
+    the literal re-verification the ask asked for, done via the real
+    interactive slider UI rather than a synthetic overdriven file; and, as
+    a negative control within the same session, confirmed pulling the same
+    slider back down to unity gain makes the clip coloring disappear again
+    (ruling out a stuck/always-on indicator). Also re-ran the two prior
+    Audio Editor Playwright scripts
+    (`verifyAudioEditorZoomAxisClipping.cjs`,
+    `verifyAudioEditorLayout.cjs`) afterward as a regression check, since
+    this round touched the waveform's surrounding layout (new
+    `.audio-editor__waveform-row` wrapper) and the clipping-color logic
+    both scripts also exercise — both still pass in full (12/12 and 4/4).
+    Playwright was installed ad-hoc (`npm install --no-save playwright`)
+    and removed afterward, per this project's established pattern; the new
+    script is left committed alongside the other Audio Editor verification
+    scripts.
+  - **Still not done / not verified:** no automated test suite (same
+    caveat as every phase). The envelope's gain ceiling stays at 2x (+6dB,
+    unchanged from before this round) — high enough to demonstrably clip a
+    0.6-peak-amplitude signal (as verified above) but a very quiet source
+    recording could still be mathematically unable to reach the clip
+    threshold even at maximum envelope gain; not treated as a gap since
+    nothing asked for a higher ceiling and a quiet source not clipping is
+    the physically correct outcome, not a bug. The dB axis's gridlines are
+    fixed at the five requested levels (0/-6/-12/-24/-48) rather than
+    adaptive to zoom the way the time axis is — amplitude gridlines don't
+    need to adapt to horizontal zoom the way time ticks do, so this wasn't
+    treated as a gap. **Dan's own hands-on pass** — in particular actually
+    *hearing* that playback now starts from wherever he clicked rather than
+    always from the trim start, and dragging a real envelope point's slider
+    on his own real (not synthetic) audio to confirm the clip indicator
+    feels right — is what's needed to close this out.
+
 **NEW, three items found by Dan actually using the now-visible waveform
 (2026-09-15):**
 

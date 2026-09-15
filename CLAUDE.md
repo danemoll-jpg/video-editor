@@ -146,15 +146,40 @@ browser treating it as cross-origin.
 **Always check `TODO.md` for the current objective before starting work** —
 this file should stay a short pointer back to TODO.md, not a duplicate.
 
-**NEW, five items from Dan actually using the editor (2026-09-15):** (1)
-a real bug — the playhead doesn't move at all, no visible cursor, no
-click-to-seek. (2-3) real sliders needed throughout (trim/fade/split, and
-volume envelope points), not just numeric fields. (4) a dB/amplitude
-vertical axis on the waveform, alongside the existing time axis. (5) once
-sliders make it easy to push a point into clipping, re-verify the
-already-built clipping indicator against a real user action, not just
-last round's scripted test. See TODO.md's Current Objective for full
-detail — none of these are built yet.
+**Five items from Dan actually using the editor — BUILT (2026-09-15), not
+yet confirmed by Dan's own hands.** (1) The playhead bug is fixed: a real,
+visible playhead line now renders on the waveform and tracks actual
+playback in real time via a `requestAnimationFrame` loop synced to the
+`AudioContext` clock; click-to-seek is now a genuine plain-click-vs-drag
+distinction (a new `CLICK_DRAG_THRESHOLD_PX` check in
+`handleWaveformMouseUp`), and `play()` now actually starts from the
+playhead (with fade/envelope scheduling adjusted for how far into the
+trim window that is) instead of always from `trimStart`. (2) Real
+`<input type="range">` sliders now sit alongside the existing numeric
+fields for trim start/end, fade in/out, and split — bound to sensible
+ranges (e.g. fade duration capped at the trimmed clip's own length) and
+kept in sync both directions. (3) Clicking an envelope point selects it
+(new `selectedPointIndex` state, highlighted on the strip and in the
+list) and reveals a dedicated gain slider for it, alongside the existing
+drag-on-strip and numeric-list editing — all three write the same
+underlying value. (4) A new fixed-width `.audio-editor__db-axis` canvas
+draws real dB gridlines (0/-6/-12/-24/-48) to the left of the waveform,
+echoed as faint reference lines across the waveform itself. (5) Re-
+verifying the clipping indicator surfaced a genuine gap worth closing,
+not just re-testing: the indicator only ever reflected the *source*
+file's raw samples, with no knowledge of the volume envelope, so no
+amount of dragging item 3's new slider could ever have lit it up — a new
+`computeEffectiveClipped` in `audioEditPreview.ts` now also flags a
+column red when source peak × the envelope gain in effect there exceeds
+full scale, so the ask ("re-verify... via a real user action") is now
+actually possible and true. Verified via a new scripted Playwright pass
+(`scripts/verifyAudioEditorPlayheadSlidersDbAxis.cjs`, 22/22 assertions)
+against two real seeded tones — including genuinely dragging a real
+envelope-point slider to its maximum and confirming the clip indicator
+lights up, then dragging it back down and confirming it clears again —
+plus a clean re-run of the two prior Audio Editor Playwright scripts as a
+regression check (both still pass in full). See TODO.md's Current
+Objective for the full per-item build/verification writeup.
 
 **Three items from Dan actually using the now-visible waveform — BUILT
 (2026-09-15), not yet confirmed by Dan's own hands.** (1) The real

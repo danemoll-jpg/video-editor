@@ -1634,6 +1634,21 @@ body {
   flex-wrap: wrap;
 }
 
+.audio-editor__waveform-row {
+  /* Same defensive flex-shrink: 0 as `.audio-editor__scroll` below (its own
+     comment explains why) — this row is now the direct flex-column child of
+     `.audio-editor__body`, so it's the one that could collapse to 0px tall
+     under the same overflow/min-height quirk if left implicit. */
+  display: flex;
+  align-items: flex-start;
+  flex-shrink: 0;
+}
+
+.audio-editor__db-axis {
+  display: block;
+  flex-shrink: 0;
+}
+
 .audio-editor__scroll {
   /* flex-shrink: 0 + the explicit overflow-y (rather than leaving it to
      default to auto, which strips flexbox's "automatic minimum size"
@@ -1681,8 +1696,36 @@ body {
 
 .audio-editor__envelope-row {
   align-items: flex-end;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.audio-editor__envelope-row--selected {
+  background: rgba(255, 200, 80, 0.08);
+  outline: 1px solid rgba(255, 200, 80, 0.5);
 }
 
 .audio-editor__envelope-row .btn--danger {
   flex: 0 0 auto;
+}
+
+.audio-editor__field-with-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.audio-editor__slider {
+  width: 100%;
+}
+
+.audio-editor__selected-point {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: 4px;
+}
+
+.audio-editor__selected-point .muted {
+  font-size: 12px;
 }

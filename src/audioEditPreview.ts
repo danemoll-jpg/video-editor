@@ -63,6 +63,33 @@ export function buildFadeCurveSamples(curve: FadeCurve, direction: 'in' | 'out',
   return samples
 }
 
+/**
+ * Slices a fade-curve sample array to just the portion from `fraction`
+ * (0..1) onward, re-sampled so the result still starts exactly at that
+ * point in the curve — used when playback starts mid-fade (click-to-seek
+ * lands inside a fade-in/out window) so the remaining fade continues from
+ * wherever the curve actually is, rather than restarting from 0.
+ */
+export function sliceCurveFrom(samples: Float32Array, fraction: number): Float32Array {
+  const f = Math.max(0, Math.min(1, fraction))
+  if (f >= 1) return new Float32Array([samples[samples.length - 1]])
+  const startIndexFloat = f * (samples.length - 1)
+  const startIndex = Math.floor(startIndexFloat)
+  const frac = startIndexFloat - startIndex
+  const first =
+    startIndex + 1 < samples.length ? samples[startIndex] + (samples[startIndex + 1] - samples[startIndex]) * frac : samples[startIndex]
+  const rest = samples.slice(startIndex + 1)
+  return Float32Array.from([first, ...rest])
+}
+
+/** dB gridlines drawn on the waveform's vertical amplitude axis, per the 2026-09-15 ask. */
+export const DB_GRIDLINE_LEVELS = [0, -6, -12, -24, -48]
+
+/** Converts a dBFS value to a linear amplitude ratio (1.0 = 0 dBFS = full scale). */
+export function dbToAmplitude(db: number): number {
+  return Math.pow(10, db / 20)
+}
+
 /** Linear-interpolated envelope gain at time `t` (seconds since the trimmed clip's own start) — used to draw the envelope overlay, not for scheduling (the live preview schedules real linearRampToValueAtTime automation instead, see AudioEditor.tsx). */
 export function envelopeGainAt(points: EnvelopePoint[], t: number): number {
   if (points.length === 0) return 1
@@ -172,4 +199,34 @@ export function computeWaveformPeaks(buffer: AudioBuffer, pixelsPerSecond: numbe
     clipped[col] = colClipped
   }
   return { min, max, clipped }
+}
+
+/**
+ * A second, edit-aware clipping flag per column: `computeWaveformPeaks`'s
+ * `clipped` only ever reflects the *source* file's own raw samples, which
+ * means it never lit up from an edit made in this editor — including
+ * deliberately pushing a volume envelope point up past unity gain (2026-
+ * 09-15's ask #5 exists precisely because that gap made the indicator hard
+ * to confirm interactively: there was no editing action that could turn it
+ * on). This computes, per column, whether the *edited* signal (source peak
+ * × the envelope gain in effect at that point in the kept/trimmed range)
+ * would clip — cheap to recompute on every envelope tweak since it reuses
+ * the already-downsampled peaks rather than rescanning raw PCM.
+ */
+export function computeEffectiveClipped(
+  peaks: WaveformPeaks,
+  pixelsPerSecond: number,
+  trimStart: number,
+  trimEnd: number,
+  envelope: EnvelopePoint[],
+): Uint8Array {
+  const result = new Uint8Array(peaks.min.length)
+  for (let x = 0; x < peaks.min.length; x++) {
+    const t = x / pixelsPerSecond
+    if (t < trimStart || t > trimEnd) continue
+    const gain = envelopeGainAt(envelope, t - trimStart)
+    const peak = Math.max(Math.abs(peaks.min[x]), Math.abs(peaks.max[x])) * gain
+    if (peak >= CLIP_THRESHOLD) result[x] = 1
+  }
+  return result
 }

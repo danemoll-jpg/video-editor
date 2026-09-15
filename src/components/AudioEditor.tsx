@@ -7,7 +7,18 @@ import {
   NORMALIZE_MODE_LABELS,
   defaultAudioEditSpec,
 } from '../../electron/audioEditTypes'
-import { buildFadeCurveSamples, computePeakGain, computeWaveformPeaks, CLIP_THRESHOLD, type WaveformPeaks } from '../audioEditPreview'
+import {
+  buildFadeCurveSamples,
+  computePeakGain,
+  computeWaveformPeaks,
+  computeEffectiveClipped,
+  sliceCurveFrom,
+  envelopeGainAt,
+  dbToAmplitude,
+  DB_GRIDLINE_LEVELS,
+  CLIP_THRESHOLD,
+  type WaveformPeaks,
+} from '../audioEditPreview'
 
 // The Audio Editor (TODO.md's "solid waveform editor" tier, 2026-09-15) —
 // opened via MediaLibraryCard's "✏️ Edit Audio" action. Non-destructive by
@@ -25,6 +36,11 @@ const WAVEFORM_HEIGHT = 140
 const ENVELOPE_HEIGHT = 70
 const TIME_AXIS_HEIGHT = 22
 const ENVELOPE_MAX_GAIN = 2
+const DB_AXIS_WIDTH = 44
+// A plain click (no meaningful pointer movement) seeks; anything past this
+// travels far enough to count as a drag-select instead, per the 2026-09-15
+// ask to only seek on "a plain click (not a drag)."
+const CLICK_DRAG_THRESHOLD_PX = 3
 
 // Zooming in on a long file used to let `canvasWidth` (duration ×
 // pixelsPerSecond) grow unbounded — for Dan's real 230.16s file at the old
@@ -69,6 +85,11 @@ function formatAxisTime(seconds: number, showDecimal: boolean): string {
   return h > 0 ? `${h}:${mStr}:${secStr}` : `${mStr}:${secStr}`
 }
 
+/** y-offsets from the waveform's vertical center for each dB gridline, both above and below center (amplitude is symmetric around silence). */
+function dbGridlineOffsets(): { db: number; offsetPx: number }[] {
+  return DB_GRIDLINE_LEVELS.map((db) => ({ db, offsetPx: dbToAmplitude(db) * (WAVEFORM_HEIGHT / 2) }))
+}
+
 interface Props {
   projectId: string
   entry: MediaLibraryEntry
@@ -107,14 +128,19 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
   const [splitting, setSplitting] = useState(false)
   const [splitError, setSplitError] = useState<string | null>(null)
 
+  const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null)
+
   const audioCtxRef = useRef<AudioContext | null>(null)
   const sourceRef = useRef<AudioBufferSourceNode | null>(null)
+  const rafRef = useRef<number | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const timeAxisCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const envelopeCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const dbAxisCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const draggingSelectionRef = useRef(false)
   const draggingPointIndexRef = useRef<number | null>(null)
+  const clickStartRef = useRef<{ clientX: number; t: number } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -132,6 +158,7 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
         setAudioBuffer(buffer)
         setSpec(defaultAudioEditSpec(buffer.duration))
         setSplitTime(buffer.duration / 2)
+        setSelectedPointIndex(null)
         setPixelsPerSecond(clamp(700 / Math.max(buffer.duration, 0.01), MIN_PPS, maxPixelsPerSecondFor(buffer.duration)))
       } catch (err) {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err))
@@ -152,6 +179,14 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
   const peaks: WaveformPeaks | null = useMemo(
     () => (audioBuffer ? computeWaveformPeaks(audioBuffer, pixelsPerSecond) : null),
     [audioBuffer, pixelsPerSecond],
+  )
+
+  // Edit-aware clipping (item 5, 2026-09-15): reflects the volume envelope
+  // actually pushing a sample over full scale, on top of computeWaveformPeaks'
+  // source-only clip flag — see computeEffectiveClipped's header comment.
+  const effectiveClipped: Uint8Array | null = useMemo(
+    () => (peaks && spec ? computeEffectiveClipped(peaks, pixelsPerSecond, spec.trimStart, spec.trimEnd, spec.envelope) : null),
+    [peaks, pixelsPerSecond, spec?.trimStart, spec?.trimEnd, spec?.envelope],
   )
 
   const duration = audioBuffer?.duration ?? 0
@@ -195,6 +230,47 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
     }
   }, [audioBuffer, pixelsPerSecond, canvasWidth, duration])
 
+  // --- dB axis drawing ------------------------------------------------------
+  // A fixed-width column to the left of the scrolling waveform — unlike the
+  // time axis, amplitude gridlines don't move with horizontal scroll/zoom, so
+  // this lives outside `.audio-editor__scroll` entirely (see the JSX) rather
+  // than scrolling alongside the waveform. One canvas spans the full stacked
+  // height (time axis + waveform + envelope) so it lines up vertically with
+  // all three, but only draws gridlines/labels within the waveform's span.
+
+  useEffect(() => {
+    const canvas = dbAxisCanvasRef.current
+    if (!canvas || !audioBuffer) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const styles = getComputedStyle(canvas)
+    const bg = styles.getPropertyValue('--bg').trim() || '#12141a'
+    const textColor = styles.getPropertyValue('--text-muted').trim() || '#888'
+    const gridColor = styles.getPropertyValue('--border').trim() || '#2c303a'
+    const totalHeight = TIME_AXIS_HEIGHT + WAVEFORM_HEIGHT + ENVELOPE_HEIGHT
+
+    ctx.clearRect(0, 0, DB_AXIS_WIDTH, totalHeight)
+    ctx.fillStyle = bg
+    ctx.fillRect(0, 0, DB_AXIS_WIDTH, totalHeight)
+
+    const mid = TIME_AXIS_HEIGHT + WAVEFORM_HEIGHT / 2
+    ctx.font = '9px sans-serif'
+    ctx.textBaseline = 'middle'
+    ctx.textAlign = 'right'
+    for (const { db, offsetPx } of dbGridlineOffsets()) {
+      for (const sign of [-1, 1]) {
+        const y = mid + sign * offsetPx
+        ctx.strokeStyle = gridColor
+        ctx.beginPath()
+        ctx.moveTo(DB_AXIS_WIDTH - 6, Math.round(y) + 0.5)
+        ctx.lineTo(DB_AXIS_WIDTH, Math.round(y) + 0.5)
+        ctx.stroke()
+        ctx.fillStyle = textColor
+        ctx.fillText(`${db}`, DB_AXIS_WIDTH - 8, y)
+      }
+    }
+  }, [audioBuffer])
+
   // --- Waveform drawing --------------------------------------------------
 
   useEffect(() => {
@@ -213,15 +289,36 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
     ctx.fillRect(0, 0, canvasWidth, WAVEFORM_HEIGHT)
 
     const mid = WAVEFORM_HEIGHT / 2
+
+    // Faint horizontal reference lines at the same dB levels the dB axis
+    // column labels, so amplitude is readable directly against the waveform
+    // and not just from the axis strip off to the side.
+    const gridColor = styles.getPropertyValue('--border').trim() || '#2c303a'
+    ctx.strokeStyle = gridColor
+    ctx.globalAlpha = 0.5
+    for (const { offsetPx } of dbGridlineOffsets()) {
+      for (const sign of [-1, 1]) {
+        const y = Math.round(mid + sign * offsetPx) + 0.5
+        ctx.beginPath()
+        ctx.moveTo(0, y)
+        ctx.lineTo(canvasWidth, y)
+        ctx.stroke()
+      }
+    }
+    ctx.globalAlpha = 1
+
     for (let x = 0; x < peaks.min.length; x++) {
       const t = x / pixelsPerSecond
       const kept = t >= spec.trimStart && t <= spec.trimEnd
-      const isClipped = peaks.clipped[x] === 1
-      // Clipping always renders red regardless of kept/trimmed-out state —
-      // it's a warning about the source audio, not about the edit — but
-      // still dims along with the rest of the trimmed-out region so a
-      // clipped, discarded stretch doesn't visually dominate over the part
-      // that's actually being kept.
+      // Red for either: the source sample itself already clips
+      // (peaks.clipped), or the current volume envelope pushes it over full
+      // scale (effectiveClipped) — e.g. dragging an envelope point's new
+      // slider up past unity gain. Renders red regardless of kept/trimmed-
+      // out state — it's a warning either about the source audio or about
+      // the edit — but still dims along with the rest of the trimmed-out
+      // region so a clipped, discarded stretch doesn't visually dominate
+      // over the part that's actually being kept.
+      const isClipped = peaks.clipped[x] === 1 || effectiveClipped?.[x] === 1
       ctx.strokeStyle = isClipped ? clipColor : kept ? keptColor : waveColor
       ctx.globalAlpha = kept ? 1 : 0.35
       const y1 = mid + peaks.min[x] * mid
@@ -242,12 +339,41 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
       ctx.strokeRect(x1, 0, x2 - x1, WAVEFORM_HEIGHT)
     }
 
+    // Playhead — a real, visible line synced to actual playback position
+    // (updated every animation frame while playing, see the play()/tick
+    // loop below), plus a small triangular handle at the top so it reads
+    // clearly even against a busy waveform.
+    const px = playhead * pixelsPerSecond
     ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 2
     ctx.beginPath()
-    ctx.moveTo(playhead * pixelsPerSecond, 0)
-    ctx.lineTo(playhead * pixelsPerSecond, WAVEFORM_HEIGHT)
+    ctx.moveTo(px, 0)
+    ctx.lineTo(px, WAVEFORM_HEIGHT)
     ctx.stroke()
-  }, [peaks, pixelsPerSecond, canvasWidth, spec, selection, playhead])
+    ctx.lineWidth = 1
+    ctx.fillStyle = '#ffffff'
+    ctx.beginPath()
+    ctx.moveTo(px - 5, 0)
+    ctx.lineTo(px + 5, 0)
+    ctx.lineTo(px, 7)
+    ctx.closePath()
+    ctx.fill()
+  }, [peaks, effectiveClipped, pixelsPerSecond, canvasWidth, spec, selection, playhead])
+
+  // Keep the playhead in view during playback, at any zoom level — without
+  // this, playing past the edge of the visible (horizontally-scrolled)
+  // window would make the "real-time" playhead invisible again.
+  useEffect(() => {
+    if (!isPlaying) return
+    const container = scrollRef.current
+    if (!container) return
+    const x = playhead * pixelsPerSecond
+    const left = container.scrollLeft
+    const right = left + container.clientWidth
+    if (x < left || x > right) {
+      container.scrollLeft = Math.max(0, x - container.clientWidth / 2)
+    }
+  }, [playhead, isPlaying, pixelsPerSecond])
 
   // --- Envelope strip drawing ---------------------------------------------
 
@@ -277,24 +403,34 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
       ctx.lineTo(canvasWidth, gainToY(1))
       ctx.stroke()
     } else {
-      const sorted = [...spec.envelope].sort((a, b) => a.time - b.time)
+      const sorted = spec.envelope.map((p, i) => ({ p, i })).sort((a, b) => a.p.time - b.p.time)
       ctx.strokeStyle = '#4da3ff'
       ctx.beginPath()
-      ctx.moveTo(0, gainToY(sorted[0].gain))
-      for (const p of sorted) ctx.lineTo(p.time * pixelsPerSecond, gainToY(p.gain))
-      ctx.lineTo(canvasWidth, gainToY(sorted[sorted.length - 1].gain))
+      ctx.moveTo(0, gainToY(sorted[0].p.gain))
+      for (const { p } of sorted) ctx.lineTo(p.time * pixelsPerSecond, gainToY(p.gain))
+      ctx.lineTo(canvasWidth, gainToY(sorted[sorted.length - 1].p.gain))
       ctx.stroke()
 
-      for (const p of sorted) {
-        ctx.fillStyle = '#4da3ff'
+      for (const { p, i } of sorted) {
+        const selected = i === selectedPointIndex
+        ctx.fillStyle = selected ? '#ffc850' : '#4da3ff'
         ctx.beginPath()
-        ctx.arc(p.time * pixelsPerSecond, gainToY(p.gain), 5, 0, Math.PI * 2)
+        ctx.arc(p.time * pixelsPerSecond, gainToY(p.gain), selected ? 7 : 5, 0, Math.PI * 2)
         ctx.fill()
+        if (selected) {
+          ctx.strokeStyle = '#ffffff'
+          ctx.lineWidth = 1.5
+          ctx.stroke()
+        }
       }
     }
-  }, [spec, canvasWidth, pixelsPerSecond])
+  }, [spec, canvasWidth, pixelsPerSecond, selectedPointIndex])
 
   // --- Interaction: waveform range selection ------------------------------
+  // A plain click seeks the playhead (and clears any selection); a drag past
+  // CLICK_DRAG_THRESHOLD_PX instead selects a trim range and leaves the
+  // playhead untouched — distinguished in handleWaveformMouseUp by comparing
+  // the mouseup position back against where the mousedown started.
 
   function timeFromClientX(clientX: number): number {
     const canvas = waveformCanvasRef.current
@@ -305,9 +441,9 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
 
   function handleWaveformMouseDown(e: React.MouseEvent) {
     const t = timeFromClientX(e.clientX)
+    clickStartRef.current = { clientX: e.clientX, t }
     draggingSelectionRef.current = true
     setSelection({ start: t, end: t })
-    setPlayhead(t)
   }
 
   function handleWaveformMouseMove(e: React.MouseEvent) {
@@ -316,8 +452,18 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
     setSelection((sel) => (sel ? { ...sel, end: t } : { start: t, end: t }))
   }
 
-  function handleWaveformMouseUp() {
+  function handleWaveformMouseUp(e: React.MouseEvent) {
     draggingSelectionRef.current = false
+    const start = clickStartRef.current
+    clickStartRef.current = null
+    const movedPx = start ? Math.abs(e.clientX - start.clientX) : Infinity
+    if (start && movedPx < CLICK_DRAG_THRESHOLD_PX) {
+      // A plain click: seek the playhead there (and where the next Play
+      // starts from — see play()), no lingering selection.
+      setPlayhead(start.t)
+      setSelection(null)
+      return
+    }
     setSelection((sel) => {
       if (!sel) return sel
       if (Math.abs(sel.end - sel.start) < 0.05) return null
@@ -361,6 +507,7 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
     const hit = envelopePointAt(e.clientX, e.clientY)
     if (hit !== null) {
       draggingPointIndexRef.current = hit
+      setSelectedPointIndex(hit)
       return
     }
     // Add a new point where clicked, then start dragging it immediately.
@@ -371,6 +518,7 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
     const gain = clamp(ENVELOPE_MAX_GAIN * (1 - (e.clientY - rect.top) / ENVELOPE_HEIGHT), 0, ENVELOPE_MAX_GAIN)
     setSpec((s) => (s ? { ...s, envelope: [...s.envelope, { time, gain }] } : s))
     draggingPointIndexRef.current = spec.envelope.length
+    setSelectedPointIndex(spec.envelope.length)
   }
 
   function handleEnvelopeMouseMove(e: React.MouseEvent) {
@@ -384,18 +532,37 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
 
   function removeEnvelopePoint(index: number) {
     setSpec((s) => (s ? { ...s, envelope: s.envelope.filter((_, i) => i !== index) } : s))
+    setSelectedPointIndex((sel) => (sel === index ? null : sel))
   }
 
   function addEnvelopePointAtPlayhead() {
     if (!spec) return
     const time = clamp(playhead - spec.trimStart, 0, trimmedDuration)
     setSpec((s) => (s ? { ...s, envelope: [...s.envelope, { time, gain: 1 }] } : s))
+    setSelectedPointIndex(spec.envelope.length)
+  }
+
+  function setSelectedPointGain(gain: number) {
+    setSpec((s) => {
+      if (!s || selectedPointIndex === null || !s.envelope[selectedPointIndex]) return s
+      const envelope = [...s.envelope]
+      envelope[selectedPointIndex] = { ...envelope[selectedPointIndex], gain: clamp(gain, 0, ENVELOPE_MAX_GAIN) }
+      return { ...s, envelope }
+    })
   }
 
   // --- Playback ------------------------------------------------------------
 
   function stopPlayback() {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
     if (sourceRef.current) {
+      // A manual stop shouldn't trigger the natural-completion handling in
+      // play()'s own `onended` (which snaps the playhead to trimEnd) — that
+      // handler is only for genuinely reaching the end of playback.
+      sourceRef.current.onended = null
       try {
         sourceRef.current.stop()
       } catch {
@@ -407,11 +574,22 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
     setIsPlaying(false)
   }
 
+  // Plays from the current playhead position (click-to-seek's "sets where
+  // the next Play starts from"), not always from trimStart — so fades and
+  // the envelope are scheduled relative to how far into the trimmed window
+  // that start point already is, continuing mid-fade/mid-ramp correctly
+  // rather than restarting them from scratch.
   function play() {
     if (!audioBuffer || !spec) return
     stopPlayback()
     const ctx = audioCtxRef.current ?? new AudioContext()
     audioCtxRef.current = ctx
+
+    const trimStart = spec.trimStart
+    const trimEnd = spec.trimEnd
+    const playFrom = clamp(playhead, trimStart, trimEnd)
+    const remaining = trimEnd - playFrom
+    if (remaining <= 0.001) return
 
     const source = ctx.createBufferSource()
     source.buffer = audioBuffer
@@ -421,7 +599,10 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
     source.connect(gainFades).connect(gainEnvelope).connect(gainNormalize).connect(ctx.destination)
 
     const now = ctx.currentTime + 0.06
-    const dur = Math.max(0.01, trimmedDuration)
+    const dur = Math.max(0.01, trimEnd - trimStart)
+    // How far `playFrom` already sits into the full trimmed window — 0 if
+    // starting from the very beginning (the common case).
+    const elapsed = playFrom - trimStart
 
     // Fades — scaled down proportionally if they'd overlap (preview-only
     // safeguard so Web Audio's setValueCurveAtTime scheduling never sees two
@@ -434,27 +615,63 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
       fadeIn *= scale
       fadeOut *= scale
     }
+    const fadeOutStart = dur - fadeOut
+
     gainFades.gain.setValueAtTime(1, now)
-    if (fadeIn > 0.005) gainFades.gain.setValueCurveAtTime(buildFadeCurveSamples(spec.fadeInCurve, 'in'), now, fadeIn)
-    if (fadeOut > 0.005) gainFades.gain.setValueCurveAtTime(buildFadeCurveSamples(spec.fadeOutCurve, 'out'), now + dur - fadeOut, fadeOut)
+    if (fadeIn > 0.005 && elapsed < fadeIn) {
+      // Starting inside the fade-in window: continue from wherever the
+      // curve already is instead of restarting it from 0.
+      const curve = sliceCurveFrom(buildFadeCurveSamples(spec.fadeInCurve, 'in'), elapsed / fadeIn)
+      gainFades.gain.setValueAtTime(curve[0], now)
+      gainFades.gain.setValueCurveAtTime(curve, now, fadeIn - elapsed)
+    }
+    if (fadeOut > 0.005) {
+      if (elapsed < fadeOutStart) {
+        gainFades.gain.setValueCurveAtTime(buildFadeCurveSamples(spec.fadeOutCurve, 'out'), now + (fadeOutStart - elapsed), fadeOut)
+      } else {
+        // Starting inside the fade-out window: same partial-curve handling.
+        const curve = sliceCurveFrom(buildFadeCurveSamples(spec.fadeOutCurve, 'out'), (elapsed - fadeOutStart) / fadeOut)
+        gainFades.gain.setValueAtTime(curve[0], now)
+        gainFades.gain.setValueCurveAtTime(curve, now, fadeOut - (elapsed - fadeOutStart))
+      }
+    }
 
     if (spec.envelope.length > 0) {
       const sorted = [...spec.envelope].sort((a, b) => a.time - b.time)
-      gainEnvelope.gain.setValueAtTime(sorted[0].gain, now)
+      const startGain = envelopeGainAt(sorted, elapsed)
+      gainEnvelope.gain.setValueAtTime(startGain, now)
       for (const p of sorted) {
-        gainEnvelope.gain.linearRampToValueAtTime(p.gain, now + clamp(p.time, 0, dur))
+        if (p.time <= elapsed) continue
+        gainEnvelope.gain.linearRampToValueAtTime(p.gain, now + clamp(p.time - elapsed, 0, dur))
       }
     } else {
       gainEnvelope.gain.setValueAtTime(1, now)
     }
 
-    const normGain = spec.normalizeMode === 'peak' ? computePeakGain(audioBuffer, spec.trimStart, spec.trimEnd) : 1
+    const normGain = spec.normalizeMode === 'peak' ? computePeakGain(audioBuffer, trimStart, trimEnd) : 1
     gainNormalize.gain.setValueAtTime(normGain, now)
 
-    source.start(now, spec.trimStart, dur)
+    source.start(now, playFrom, remaining)
     sourceRef.current = source
-    source.onended = () => setIsPlaying(false)
+    source.onended = () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
+      sourceRef.current = null
+      setIsPlaying(false)
+      setPlayhead(trimEnd)
+    }
     setIsPlaying(true)
+
+    // Live playhead sync, driven by the AudioContext's own clock rather than
+    // a fixed-interval timer, so it tracks actual playback exactly (matches
+    // real audio scheduling drift/underrun behavior, not wall-clock time).
+    const tick = () => {
+      setPlayhead(clamp(playFrom + (ctx.currentTime - now), trimStart, trimEnd))
+      rafRef.current = requestAnimationFrame(tick)
+    }
+    rafRef.current = requestAnimationFrame(tick)
   }
 
   // --- Commit / Split --------------------------------------------------------
@@ -532,33 +749,43 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
               </span>
             </div>
 
-            <div className="audio-editor__scroll" ref={scrollRef}>
-              <canvas ref={timeAxisCanvasRef} width={canvasWidth} height={TIME_AXIS_HEIGHT} className="audio-editor__time-axis" />
+            <div className="audio-editor__waveform-row">
               <canvas
-                ref={waveformCanvasRef}
-                width={canvasWidth}
-                height={WAVEFORM_HEIGHT}
-                className="audio-editor__waveform"
-                onMouseDown={handleWaveformMouseDown}
-                onMouseMove={handleWaveformMouseMove}
-                onMouseUp={handleWaveformMouseUp}
-                onMouseLeave={handleWaveformMouseUp}
+                ref={dbAxisCanvasRef}
+                width={DB_AXIS_WIDTH}
+                height={TIME_AXIS_HEIGHT + WAVEFORM_HEIGHT + ENVELOPE_HEIGHT}
+                className="audio-editor__db-axis"
               />
-              <canvas
-                ref={envelopeCanvasRef}
-                width={canvasWidth}
-                height={ENVELOPE_HEIGHT}
-                className="audio-editor__envelope-strip"
-                onMouseDown={handleEnvelopeMouseDown}
-                onMouseMove={handleEnvelopeMouseMove}
-                onMouseUp={handleEnvelopeMouseUp}
-                onMouseLeave={handleEnvelopeMouseUp}
-              />
+              <div className="audio-editor__scroll" ref={scrollRef}>
+                <canvas ref={timeAxisCanvasRef} width={canvasWidth} height={TIME_AXIS_HEIGHT} className="audio-editor__time-axis" />
+                <canvas
+                  ref={waveformCanvasRef}
+                  width={canvasWidth}
+                  height={WAVEFORM_HEIGHT}
+                  className="audio-editor__waveform"
+                  onMouseDown={handleWaveformMouseDown}
+                  onMouseMove={handleWaveformMouseMove}
+                  onMouseUp={handleWaveformMouseUp}
+                  onMouseLeave={handleWaveformMouseUp}
+                />
+                <canvas
+                  ref={envelopeCanvasRef}
+                  width={canvasWidth}
+                  height={ENVELOPE_HEIGHT}
+                  className="audio-editor__envelope-strip"
+                  onMouseDown={handleEnvelopeMouseDown}
+                  onMouseMove={handleEnvelopeMouseMove}
+                  onMouseUp={handleEnvelopeMouseUp}
+                  onMouseLeave={handleEnvelopeMouseUp}
+                />
+              </div>
             </div>
             <p className="clip-inspector__hint muted">
-              Waveform: click-drag to select a range — red highlights any sample at or above full scale (±
-              {CLIP_THRESHOLD.toFixed(3)} / ~0 dBFS), i.e. clipping. Envelope strip below it: click to add a volume
-              point, drag a point to move it.
+              Waveform: click to seek the playhead (and set where the next ▶ Play starts from); click-drag to select
+              a range instead — red highlights any sample at or above full scale (±{CLIP_THRESHOLD.toFixed(3)} / ~0
+              dBFS), i.e. clipping, and the left-hand axis reads amplitude in dB. Envelope strip below it: click to
+              add a volume point, drag a point to move it (or click a point once to select it, then use its slider
+              below).
             </p>
 
             <div className="audio-editor__columns">
@@ -566,30 +793,52 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
                 <div className="clip-inspector__section">
                   <h4>Trim</h4>
                   <div className="clip-inspector__row">
-                    <label className="clip-inspector__field">
-                      <span>Start (s)</span>
+                    <div className="audio-editor__field-with-slider">
+                      <label className="clip-inspector__field">
+                        <span>Start (s)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={spec.trimEnd}
+                          step={0.05}
+                          value={spec.trimStart.toFixed(2)}
+                          onChange={(e) => setSpec({ ...spec, trimStart: clamp(Number(e.target.value) || 0, 0, spec.trimEnd) })}
+                        />
+                      </label>
                       <input
-                        type="number"
+                        type="range"
+                        className="audio-editor__slider"
                         min={0}
                         max={spec.trimEnd}
-                        step={0.05}
-                        value={spec.trimStart.toFixed(2)}
-                        onChange={(e) => setSpec({ ...spec, trimStart: clamp(Number(e.target.value) || 0, 0, spec.trimEnd) })}
+                        step={0.01}
+                        value={spec.trimStart}
+                        onChange={(e) => setSpec({ ...spec, trimStart: clamp(Number(e.target.value), 0, spec.trimEnd) })}
                       />
-                    </label>
-                    <label className="clip-inspector__field">
-                      <span>End (s)</span>
+                    </div>
+                    <div className="audio-editor__field-with-slider">
+                      <label className="clip-inspector__field">
+                        <span>End (s)</span>
+                        <input
+                          type="number"
+                          min={spec.trimStart}
+                          max={duration}
+                          step={0.05}
+                          value={spec.trimEnd.toFixed(2)}
+                          onChange={(e) =>
+                            setSpec({ ...spec, trimEnd: clamp(Number(e.target.value) || duration, spec.trimStart, duration) })
+                          }
+                        />
+                      </label>
                       <input
-                        type="number"
+                        type="range"
+                        className="audio-editor__slider"
                         min={spec.trimStart}
                         max={duration}
-                        step={0.05}
-                        value={spec.trimEnd.toFixed(2)}
-                        onChange={(e) =>
-                          setSpec({ ...spec, trimEnd: clamp(Number(e.target.value) || duration, spec.trimStart, duration) })
-                        }
+                        step={0.01}
+                        value={spec.trimEnd}
+                        onChange={(e) => setSpec({ ...spec, trimEnd: clamp(Number(e.target.value), spec.trimStart, duration) })}
                       />
-                    </label>
+                    </div>
                   </div>
                   <div className="inline-form">
                     {selection && (
@@ -608,17 +857,28 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
                   <p className="muted clip-inspector__hint">
                     Cuts this clip into two brand-new assets at the given point — the original is untouched.
                   </p>
-                  <label className="clip-inspector__field">
-                    <span>Split at (s)</span>
+                  <div className="audio-editor__field-with-slider">
+                    <label className="clip-inspector__field">
+                      <span>Split at (s)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={duration}
+                        step={0.05}
+                        value={splitTime.toFixed(2)}
+                        onChange={(e) => setSplitTime(clamp(Number(e.target.value) || 0, 0, duration))}
+                      />
+                    </label>
                     <input
-                      type="number"
+                      type="range"
+                      className="audio-editor__slider"
                       min={0}
                       max={duration}
-                      step={0.05}
-                      value={splitTime.toFixed(2)}
-                      onChange={(e) => setSplitTime(clamp(Number(e.target.value) || 0, 0, duration))}
+                      step={0.01}
+                      value={splitTime}
+                      onChange={(e) => setSplitTime(clamp(Number(e.target.value), 0, duration))}
                     />
-                  </label>
+                  </div>
                   <div className="inline-form">
                     <button className="btn" disabled={splitting} onClick={() => setSplitTime(playhead)}>
                       Use Playhead ({fmt(playhead)})
@@ -635,16 +895,27 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
                 <div className="clip-inspector__section">
                   <h4>Fade</h4>
                   <div className="clip-inspector__row">
-                    <label className="clip-inspector__field">
-                      <span>Fade in (s)</span>
+                    <div className="audio-editor__field-with-slider">
+                      <label className="clip-inspector__field">
+                        <span>Fade in (s)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.05}
+                          value={spec.fadeInDuration.toFixed(2)}
+                          onChange={(e) => setSpec({ ...spec, fadeInDuration: Math.max(0, Number(e.target.value) || 0) })}
+                        />
+                      </label>
                       <input
-                        type="number"
+                        type="range"
+                        className="audio-editor__slider"
                         min={0}
-                        step={0.05}
-                        value={spec.fadeInDuration.toFixed(2)}
-                        onChange={(e) => setSpec({ ...spec, fadeInDuration: Math.max(0, Number(e.target.value) || 0) })}
+                        max={Math.max(trimmedDuration, 0.01)}
+                        step={0.01}
+                        value={Math.min(spec.fadeInDuration, Math.max(trimmedDuration, 0.01))}
+                        onChange={(e) => setSpec({ ...spec, fadeInDuration: Math.max(0, Number(e.target.value)) })}
                       />
-                    </label>
+                    </div>
                     <label className="clip-inspector__field">
                       <span>Curve</span>
                       <select
@@ -660,16 +931,27 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
                     </label>
                   </div>
                   <div className="clip-inspector__row">
-                    <label className="clip-inspector__field">
-                      <span>Fade out (s)</span>
+                    <div className="audio-editor__field-with-slider">
+                      <label className="clip-inspector__field">
+                        <span>Fade out (s)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.05}
+                          value={spec.fadeOutDuration.toFixed(2)}
+                          onChange={(e) => setSpec({ ...spec, fadeOutDuration: Math.max(0, Number(e.target.value) || 0) })}
+                        />
+                      </label>
                       <input
-                        type="number"
+                        type="range"
+                        className="audio-editor__slider"
                         min={0}
-                        step={0.05}
-                        value={spec.fadeOutDuration.toFixed(2)}
-                        onChange={(e) => setSpec({ ...spec, fadeOutDuration: Math.max(0, Number(e.target.value) || 0) })}
+                        max={Math.max(trimmedDuration, 0.01)}
+                        step={0.01}
+                        value={Math.min(spec.fadeOutDuration, Math.max(trimmedDuration, 0.01))}
+                        onChange={(e) => setSpec({ ...spec, fadeOutDuration: Math.max(0, Number(e.target.value)) })}
                       />
-                    </label>
+                    </div>
                     <label className="clip-inspector__field">
                       <span>Curve</span>
                       <select
@@ -721,7 +1003,13 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
                     .map((p, i) => ({ p, i }))
                     .sort((a, b) => a.p.time - b.p.time)
                     .map(({ p, i }) => (
-                      <div key={i} className="clip-inspector__row audio-editor__envelope-row">
+                      <div
+                        key={i}
+                        className={`clip-inspector__row audio-editor__envelope-row${
+                          i === selectedPointIndex ? ' audio-editor__envelope-row--selected' : ''
+                        }`}
+                        onClick={() => setSelectedPointIndex(i)}
+                      >
                         <label className="clip-inspector__field">
                           <span>Time (s)</span>
                           <input
@@ -759,6 +1047,26 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
                     ))}
                 </div>
               )}
+              {selectedPointIndex !== null && spec.envelope[selectedPointIndex] && (
+                <div className="audio-editor__field-with-slider audio-editor__selected-point">
+                  <span className="muted">
+                    Selected point @ {fmt(spec.envelope[selectedPointIndex].time)} — Gain{' '}
+                    {spec.envelope[selectedPointIndex].gain.toFixed(2)}
+                    {spec.envelope[selectedPointIndex].gain >= 1 && (
+                      <> ({(20 * Math.log10(spec.envelope[selectedPointIndex].gain)).toFixed(1)} dB)</>
+                    )}
+                  </span>
+                  <input
+                    type="range"
+                    className="audio-editor__slider"
+                    min={0}
+                    max={ENVELOPE_MAX_GAIN}
+                    step={0.01}
+                    value={spec.envelope[selectedPointIndex].gain}
+                    onChange={(e) => setSelectedPointGain(Number(e.target.value))}
+                  />
+                </div>
+              )}
               {envelopeWarning && (
                 <p className="clip-inspector__hint" style={{ color: 'var(--danger)' }}>
                   One or more points fall outside the current trim range and will be clamped on render.
@@ -769,7 +1077,13 @@ export default function AudioEditor({ projectId, entry, onClose, onCommitted }: 
                   + Add Point at Playhead
                 </button>
                 {spec.envelope.length > 0 && (
-                  <button className="btn" onClick={() => setSpec({ ...spec, envelope: [] })}>
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      setSpec({ ...spec, envelope: [] })
+                      setSelectedPointIndex(null)
+                    }}
+                  >
                     Clear Envelope
                   </button>
                 )}
